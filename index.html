@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Duo Game Hub</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main id="app">
+    <section id="loginView" class="view active">
+      <div class="card login-card">
+        <h1>Duo Game Hub</h1>
+        <p>Enter a name and find a partner to play.</p>
+        <input id="nameInput" maxlength="18" placeholder="Your name" />
+        <button id="loginBtn" class="primary">Continue</button>
+        <div id="loginMsg" class="msg"></div>
+      </div>
+    </section>
+
+    <section id="lobbyView" class="view">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">PLAYER</div>
+          <div id="playerName" class="player-name"></div>
+        </div>
+        <div class="status-wrap">
+          <span class="dot"></span>
+          <span id="onlineCount">Online: --</span>
+        </div>
+      </header>
+
+      <div class="content">
+        <h2>Choose a game</h2>
+        <div id="gameGrid" class="game-grid"></div>
+      </div>
+    </section>
+
+    <section id="matchView" class="view">
+      <div class="card match-card">
+        <h2 id="matchGameTitle">Finding player…</h2>
+        <div class="spinner"></div>
+        <p id="matchText">Looking for another online player.</p>
+        <button id="cancelMatchBtn">Cancel</button>
+        <button id="botBtn" class="secondary">Play with Computer</button>
+      </div>
+    </section>
+
+    <section id="roomView" class="view">
+      <header class="topbar room-topbar">
+        <div>
+          <div class="eyebrow">ROOM</div>
+          <div id="roomLabel" class="room-label"></div>
+        </div>
+        <div class="room-actions">
+          <button id="micBtn" class="icon-btn">🎤 Mic On</button>
+          <button id="leaveBtn" class="danger">Leave</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="players-row">
+          <div class="player-chip"><span id="meName"></span><small id="meScore">0</small></div>
+          <div class="vs">VS</div>
+          <div class="player-chip"><span id="oppName"></span><small id="oppScore">0</small></div>
+        </div>
+        <div id="gameStatus" class="game-status">Game ready</div>
+        <div id="gameBoard" class="game-board"></div>
+        <div class="room-footer">
+          <button id="rematchBtn" class="secondary hidden">Rematch</button>
+          <button id="newPartnerBtn" class="hidden">Find New Partner</button>
+        </div>
+      </div>
+      <audio id="remoteAudio" autoplay playsinline></audio>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
