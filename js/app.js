@@ -29,6 +29,7 @@ let roomUnsub=null, queueUnsub=null, micStream=null, pc=null, botMode=false;
 let localScore=0, oppScore=0, gameFinished=false, rpsPick=null;
 let lastScoredRoundKey=null, botRound=1, botThinking=false;
 let autoRematchTimer=null, autoRematchInterval=null, lastRpsScoredRound=0;
+let checkersPlan=null, checkersPlanTimer=null, checkersPlanCountdown=null, checkersAnimating=false;
 let overallStats={wins:0,losses:0,draws:0,played:0};
 
 function setStatus(t){ $("#gameStatus").textContent=t; }
@@ -151,7 +152,7 @@ async function createRoomWith(otherUid, otherName){
 async function joinRoom(rid,oppUid,oppName,mark){
   if(queueUnsub){ queueUnsub(); queueUnsub=null; }
   if(currentGame) await remove(ref(db,`queues/${currentGame.id}/${uid}`)).catch(()=>{});
-  roomId=rid; opponent={uid:oppUid,name:oppName}; myMark=mark; botMode=false; lastScoredRoundKey=null; lastRpsScoredRound=0; botThinking=false;
+  roomId=rid; opponent={uid:oppUid,name:oppName}; myMark=mark; botMode=false; lastScoredRoundKey=null; lastRpsScoredRound=0; botThinking=false; clearCheckersPlan();
   localScore=0; oppScore=0;
   $("#oppName").textContent=oppName; $("#roomLabel").textContent=rid.slice(-7);
   $("#meScore").textContent=localScore; $("#oppScore").textContent=oppScore;
@@ -163,7 +164,7 @@ $("#botBtn").onclick=()=>startBot();
 function startBot(){
   if(currentGame) remove(ref(db,`queues/${currentGame.id}/${uid}`)).catch(()=>{});
   if(queueUnsub){queueUnsub();queueUnsub=null;}
-  botMode=true; roomId="BOT-"+Math.random().toString(36).slice(2,8); opponent={uid:"BOT",name:"Computer"}; myMark="A"; botRound=1; lastScoredRoundKey=null; lastRpsScoredRound=0; botThinking=false;
+  botMode=true; roomId="BOT-"+Math.random().toString(36).slice(2,8); opponent={uid:"BOT",name:"Computer"}; myMark="A"; botRound=1; lastScoredRoundKey=null; lastRpsScoredRound=0; botThinking=false; clearCheckersPlan();
   localScore=0; oppScore=0;
   $("#meScore").textContent=0; $("#oppScore").textContent=0;
   $("#oppName").textContent="Computer"; $("#roomLabel").textContent="Computer";
@@ -531,48 +532,132 @@ async function dotsMove(s,turn,type,i){
   await writeState(n,next,n.winner?"finished":"playing");
 }
 
+
+function clearCheckersPlan(){
+  if(checkersPlanTimer){clearTimeout(checkersPlanTimer);checkersPlanTimer=null}
+  if(checkersPlanCountdown){clearInterval(checkersPlanCountdown);checkersPlanCountdown=null}
+  checkersPlan=null;
+  checkersAnimating=false;
+}
+
+function simulateCheckersPath(baseState, plan){
+  const n=JSON.parse(JSON.stringify(baseState));
+  let from=plan.from;
+  const captured=[];
+  for(const to of plan.landings){
+    const legal=checkersLegalMoves(n.cells,myMark,from).find(m=>m.to===to);
+    if(!legal || legal.capture===null)break;
+    const piece=n.cells[from];
+    n.cells[to]=piece;
+    n.cells[from]="";
+    n.cells[legal.capture]="";
+    captured.push(legal.capture);
+    promoteIfNeeded(n.cells,to);
+    from=to;
+  }
+  return {state:n, current:from, captured};
+}
+
+function plannedNextCaptureMoves(baseState){
+  if(!checkersPlan || !checkersPlan.landings.length)return [];
+  const sim=simulateCheckersPath(baseState,checkersPlan);
+  return checkersLegalMoves(sim.state.cells,myMark,sim.current).filter(m=>m.capture!==null);
+}
+
+function startOrResetCheckersPlanTimer(baseState){
+  if(checkersPlanTimer)clearTimeout(checkersPlanTimer);
+  if(checkersPlanCountdown)clearInterval(checkersPlanCountdown);
+
+  let remaining=3;
+  checkersPlan.remaining=remaining;
+  renderCheckers(baseState,uid);
+
+  checkersPlanCountdown=setInterval(()=>{
+    remaining--;
+    if(checkersPlan)checkersPlan.remaining=Math.max(0,remaining);
+    renderCheckers(baseState,uid);
+    if(remaining<=0 && checkersPlanCountdown){
+      clearInterval(checkersPlanCountdown);
+      checkersPlanCountdown=null;
+    }
+  },1000);
+
+  checkersPlanTimer=setTimeout(()=>executePlannedCheckersPath(baseState),3000);
+}
+
+async function executePlannedCheckersPath(baseState){
+  if(!checkersPlan || !checkersPlan.landings.length || checkersAnimating)return;
+  if(checkersPlanTimer){clearTimeout(checkersPlanTimer);checkersPlanTimer=null}
+  if(checkersPlanCountdown){clearInterval(checkersPlanCountdown);checkersPlanCountdown=null}
+
+  checkersAnimating=true;
+  const plan={from:checkersPlan.from, landings:[...checkersPlan.landings]};
+  let n=JSON.parse(JSON.stringify(baseState));
+  let from=plan.from;
+
+  for(const to of plan.landings){
+    const legal=checkersLegalMoves(n.cells,myMark,from).find(m=>m.to===to);
+    if(!legal || legal.capture===null)break;
+
+    const piece=n.cells[from];
+    n.cells[to]=piece;
+    n.cells[from]="";
+    n.cells[legal.capture]="";
+    promoteIfNeeded(n.cells,to);
+    n.selected=to;
+    renderCheckers(n,uid);
+    await new Promise(resolve=>setTimeout(resolve,420));
+    from=to;
+  }
+
+  n.selected=null;
+  const enemy=myMark==="A"?"B":"A";
+  if(!n.cells.some(x=>ownerOf(x)===enemy)||checkersLegalMoves(n.cells,enemy).length===0){
+    n.winner=myMark;
+  }
+
+  clearCheckersPlan();
+
+  if(botMode){
+    renderState(n,n.winner?uid:"BOT");
+    if(n.winner){finishLocal(n.winner);return}
+    setTimeout(()=>botMove(n),450);
+  }else{
+    await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+  }
+}
 function renderCheckers(s,turn){
   const b=$("#gameBoard");
   b.className="game-board checkers";
   b.innerHTML="";
 
   const myTurn=canMove(turn);
-  const selected=s.selected;
-  const legalForSelected=(selected!==null && selected!==undefined)
-    ? checkersLegalMoves(s.cells,myMark,selected)
-    : [];
-  const legalByTarget=new Map(legalForSelected.map(m=>[m.to,m]));
-
-  // Show all of my pieces that currently have at least one capture.
-  const allMyMoves=myTurn ? checkersLegalMoves(s.cells,myMark) : [];
-  const capturePieces=new Set(
-    allMyMoves.filter(m=>m.capture!==null).map(m=>m.from)
-  );
+  const selected=(checkersPlan?.from ?? s.selected);
+  const plannedSquares=new Map();
+  if(checkersPlan?.landings){
+    checkersPlan.landings.forEach((sq,idx)=>plannedSquares.set(sq,idx+1));
+  }
 
   if(s.winner){
     setStatus(s.winner===myMark?"You win!":"Opponent wins");
+  }else if(checkersAnimating){
+    setStatus("Moving…");
+  }else if(checkersPlan?.landings?.length){
+    const more=plannedNextCaptureMoves(s).length;
+    const sec=checkersPlan.remaining ?? 3;
+    setStatus(more>0
+      ? `Path selected • add another capture within ${sec}s`
+      : `Path selected • moving in ${sec}s`);
   }else if(!myTurn){
     setStatus("Opponent's turn");
-  }else if(selected!==null && selected!==undefined){
-    const captures=legalForSelected.filter(m=>m.capture!==null).length;
-    const moves=legalForSelected.length-captures;
-    setStatus(
-      captures>0
-        ? `Choose a landing square • ${captures} capture option${captures>1?"s":""}`
-        : `Choose a landing square • ${moves} move option${moves===1?"":"s"}`
-    );
-  }else if(capturePieces.size>0){
-    setStatus(`Your turn • ${capturePieces.size} piece${capturePieces.size===1?"":"s"} can capture (capture is optional)`);
   }else{
-    setStatus("Your turn • Select a piece");
+    setStatus("Your turn");
   }
 
   s.cells.forEach((v,i)=>{
     const c=document.createElement("button");
     c.className="cell checker-square";
-
     const own=ownerOf(v);
-    const move=legalByTarget.get(i);
 
     if(v==="AK") c.textContent="♔";
     else if(v==="BK") c.textContent="♚";
@@ -585,20 +670,9 @@ function renderCheckers(s,turn){
       c.setAttribute("aria-label","Selected checker piece");
     }
 
-    if(capturePieces.has(i) && own===myMark && i!==selected){
-      c.classList.add("can-capture-piece");
-    }
-
-    if(move){
-      c.classList.add("legal-destination");
-      if(move.capture!==null){
-        c.classList.add("capture-destination");
-        c.innerHTML='<span class="move-marker">×</span>';
-        c.setAttribute("aria-label","Capture landing square");
-      }else{
-        c.innerHTML='<span class="move-marker">•</span>';
-        c.setAttribute("aria-label","Move landing square");
-      }
+    if(plannedSquares.has(i)){
+      c.classList.add("planned-square");
+      c.innerHTML=`<span class="planned-step">${plannedSquares.get(i)}</span>`;
     }
 
     c.onclick=()=>checkersMove(s,turn,i);
@@ -659,40 +733,70 @@ function promoteIfNeeded(cells,index){
 }
 
 async function checkersMove(s,turn,i){
-  if(!canMove(turn)||s.winner)return;
-  let n=JSON.parse(JSON.stringify(s));
-  if(n.selected==null){
-    if(ownerOf(n.cells[i])===myMark){n.selected=i;renderCheckers(n,turn)}
+  if(!canMove(turn)||s.winner||checkersAnimating)return;
+
+  // If a multi-capture path is already being planned, only allow another
+  // legal capture landing square to be appended to that path.
+  if(checkersPlan?.landings?.length){
+    const sim=simulateCheckersPath(s,checkersPlan);
+    const nextCapture=checkersLegalMoves(sim.state.cells,myMark,sim.current)
+      .find(m=>m.capture!==null && m.to===i);
+
+    if(nextCapture){
+      checkersPlan.landings.push(i);
+      startOrResetCheckersPlanTimer(s);
+    }
     return;
   }
 
-  // Tapping another own piece changes the selected piece.
-  if(ownerOf(n.cells[i])===myMark){
-    n.selected=i;renderCheckers(n,turn);return;
+  let n=JSON.parse(JSON.stringify(s));
+
+  // Select a piece.
+  if(n.selected==null){
+    if(ownerOf(n.cells[i])===myMark){
+      n.selected=i;
+      checkersPlan={from:i,landings:[],remaining:3};
+      renderCheckers(n,turn);
+    }
+    return;
   }
 
-  const legalMoves=checkersLegalMoves(n.cells,myMark,n.selected);
-  const legal=legalMoves.find(m=>m.to===i);
-  if(!legal){
-    // Keep the current piece selected so the player can still choose one of
-    // the highlighted legal paths. Tap the selected piece again to cancel.
-    if(i===n.selected){
-      n.selected=null;
-    }
+  // Change selected piece before a move has been committed.
+  if(ownerOf(n.cells[i])===myMark){
+    n.selected=i;
+    checkersPlan={from:i,landings:[],remaining:3};
     renderCheckers(n,turn);
     return;
   }
 
-  const piece=n.cells[legal.from];
-  n.cells[legal.to]=piece;
-  n.cells[legal.from]="";
-  if(legal.capture!==null)n.cells[legal.capture]="";
-  promoteIfNeeded(n.cells,legal.to);
-  n.selected=null;
+  const from=n.selected;
+  const legal=checkersLegalMoves(n.cells,myMark,from).find(m=>m.to===i);
+  if(!legal){
+    renderCheckers(n,turn);
+    return;
+  }
 
-  const enemy=myMark==="A"?"B":"A";
-  if(!n.cells.some(x=>ownerOf(x)===enemy)||checkersLegalMoves(n.cells,enemy).length===0)n.winner=myMark;
-  await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+  // Normal move: one destination only and execute immediately.
+  if(legal.capture===null){
+    const piece=n.cells[from];
+    n.cells[i]=piece;
+    n.cells[from]="";
+    promoteIfNeeded(n.cells,i);
+    n.selected=null;
+    clearCheckersPlan();
+
+    const enemy=myMark==="A"?"B":"A";
+    if(!n.cells.some(x=>ownerOf(x)===enemy)||checkersLegalMoves(n.cells,enemy).length===0){
+      n.winner=myMark;
+    }
+    await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+    return;
+  }
+
+  // Capture move: mark the first landing square, wait 3 seconds, and allow
+  // more capture landing squares to be appended if the route continues.
+  checkersPlan={from,landings:[i],remaining:3};
+  startOrResetCheckersPlanTimer(s);
 }
 
 function botMove(state){
@@ -785,17 +889,63 @@ function botMove(state){
   if(currentGame.id==="checkers"){
     const n=JSON.parse(JSON.stringify(state));
     const moves=checkersLegalMoves(n.cells,"B");
-    if(!moves.length){n.winner="A";renderState(n,uid);done();finishLocal("A");return}
+    if(!moves.length){
+      n.winner="A";
+      renderState(n,uid);
+      done();
+      finishLocal("A");
+      return;
+    }
+
     const captures=moves.filter(m=>m.capture!==null);
     const pool=captures.length?captures:moves;
     const m=pool[Math.floor(Math.random()*pool.length)];
+
     const piece=n.cells[m.from];
-    n.cells[m.to]=piece;n.cells[m.from]="";
+    n.cells[m.to]=piece;
+    n.cells[m.from]="";
     if(m.capture!==null)n.cells[m.capture]="";
     promoteIfNeeded(n.cells,m.to);
     n.selected=null;
+
+    if(!n.cells.some(x=>ownerOf(x)==="A")||checkersLegalMoves(n.cells,"A").length===0){
+      n.winner="B";
+      renderState(n,uid);
+      done();
+      finishLocal("B");
+      return;
+    }
+
+    // Optional chained capture for the computer too.
+    if(m.capture!==null){
+      const more=checkersLegalMoves(n.cells,"B",m.to).filter(x=>x.capture!==null);
+      if(more.length && Math.random()<0.7){
+        const m2=more[Math.floor(Math.random()*more.length)];
+        n.cells[m2.to]=n.cells[m2.from];
+        n.cells[m2.from]="";
+        n.cells[m2.capture]="";
+        promoteIfNeeded(n.cells,m2.to);
+
+        // It may continue again a limited number of times.
+        let from=m2.to;
+        for(let hops=0;hops<3;hops++){
+          const again=checkersLegalMoves(n.cells,"B",from).filter(x=>x.capture!==null);
+          if(!again.length || Math.random()>=0.7)break;
+          const nx=again[Math.floor(Math.random()*again.length)];
+          n.cells[nx.to]=n.cells[nx.from];
+          n.cells[nx.from]="";
+          n.cells[nx.capture]="";
+          promoteIfNeeded(n.cells,nx.to);
+          from=nx.to;
+        }
+      }
+    }
+
     if(!n.cells.some(x=>ownerOf(x)==="A")||checkersLegalMoves(n.cells,"A").length===0)n.winner="B";
-    renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
+    renderState(n,uid);
+    done();
+    if(n.winner)finishLocal(n.winner);
+    return;
   }
   done();
 }
@@ -816,9 +966,10 @@ function finishLocal(winner){
 $("#leaveBtn").onclick=leaveRoom;
 async function leaveRoom(){
   clearAutoRematch();
+  clearCheckersPlan();
   stopVoice(); if(roomUnsub){roomUnsub();roomUnsub=null;}
   if(!botMode&&roomId) await update(roomRef(),{status:"finished"}).catch(()=>{});
-  roomId=null; opponent=null; botMode=false; botThinking=false; lastRpsScoredRound=0; $("#rematchBtn").classList.add("hidden");$("#newPartnerBtn").classList.add("hidden");show("lobbyView");
+  roomId=null; opponent=null; botMode=false; botThinking=false; lastRpsScoredRound=0; clearCheckersPlan(); $("#rematchBtn").classList.add("hidden");$("#newPartnerBtn").classList.add("hidden");show("lobbyView");
 }
 $("#newPartnerBtn").onclick=async()=>{await leaveRoom();startMatch(currentGame)};
 $("#rematchBtn").onclick=async()=>{
