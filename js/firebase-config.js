@@ -1,4 +1,3 @@
-// Replace ONLY the values below with the config from Firebase Console > Project settings > Your apps.
 export const firebaseConfig = {
   apiKey: "AIzaSyAJDshREy6iYlsFHoBB6QxMOHGg6Drh-Fc",
   authDomain: "duo-game-hub-88.firebaseapp.com",
