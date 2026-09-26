@@ -89,7 +89,7 @@ function renderOverallStats(){
   if(!box){
     box=document.createElement("div");
     box.id="overallStatsBox";
-    box.style.cssText="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 20px";
+    box.className="overall-stats";
     const grid=$("#gameGrid");
     grid?.parentElement?.insertBefore(box,grid);
   }
@@ -184,6 +184,32 @@ function startBot(){
   $("#oppName").textContent="Computer"; $("#roomLabel").textContent="Computer";
   show("roomView"); renderState(initialState(currentGame.id),uid); setStatus("Your turn");
 }
+
+const HANGMAN_WORDS = [
+  "CAT","DOG","SUN","MOON","STAR","TREE","FISH","BIRD","BOOK","GAME","PLAY","CODE","BALL","RAIN","WIND",
+  "APPLE","MANGO","GRAPE","LEMON","PEACH","BREAD","CHAIR","TABLE","HOUSE","RIVER","BEACH","CLOUD","LIGHT","MUSIC",
+  "PHONE","CLOCK","PLANT","TRAIN","PLANE","TRUCK","BRUSH","WATER","STONE","SMILE","DREAM","NIGHT","GREEN","BLACK","WHITE",
+  "ORANGE","BANANA","PAPAYA","COCONUT","CARROT","TOMATO","POTATO","GARDEN","FOREST","JUNGLE","ISLAND","DESERT","OCEAN",
+  "CAMERA","LAPTOP","ROUTER","SCREEN","BUTTON","PLAYER","PUZZLE","ROCKET","PLANET","GAMING","ANDROID","FIREBASE","NETWORK",
+  "WINDOW","KEYBOARD","MONITOR","BATTERY","CHARGER","SPEAKER","PRINTER","PACKAGE","NUMBER","MEMORY","SIGNAL","ONLINE","OFFLINE",
+  "ELEPHANT","GIRAFFE","LEOPARD","MONKEY","RABBIT","TURTLE","DOLPHIN","PENGUIN","CHICKEN","BUTTERFLY","DRAGON","PARROT",
+  "SCHOOL","TEACHER","STUDENT","PENCIL","ERASER","LIBRARY","SCIENCE","HISTORY","ENGLISH","MATHS","LESSON","QUESTION","ANSWER",
+  "FOOTBALL","CRICKET","TENNIS","HOCKEY","RUNNING","SWIMMING","CYCLING","BOXING","RACING","STADIUM","CHAMPION","VICTORY",
+  "MORNING","EVENING","MIDNIGHT","WEEKEND","HOLIDAY","BIRTHDAY","FAMILY","FRIEND","PEOPLE","COUNTRY","VILLAGE","MARKET",
+  "KITCHEN","BEDROOM","BATHROOM","WINDOWS","DOORWAY","ROOFTOP","BALCONY","GARAGE","GROCERY","SHOPPING","RECEIPT","CUSTOMER",
+  "CHOCOLATE","BISCUIT","NOODLES","SANDWICH","BURGER","PIZZA","COFFEE","TEA","MILK","SUGAR","RICE","CHEESE","BUTTER",
+  "MOUNTAIN","WATERFALL","VOLCANO","THUNDER","LIGHTNING","SUNSHINE","RAINBOW","WEATHER","SEASON","SPRING","SUMMER","WINTER",
+  "ADVENTURE","TREASURE","MYSTERY","JOURNEY","FUTURE","ENERGY","POWER","SPEED","MAGIC","SECRET","HIDDEN","WINNER","BATTLE",
+  "COMPUTER","SOFTWARE","HARDWARE","INTERNET","WEBSITE","BROWSER","SERVER","DATABASE","SECURITY","PASSWORD","MESSAGE","PROFILE",
+  "SMARTPHONE","HEADPHONE","MICROPHONE","BLUETOOTH","WIRELESS","DOWNLOAD","UPLOAD","STORAGE","BACKUP","FOLDER","DOCUMENT","PICTURE",
+  "ELEPHANTINE","EXPLORATION","TECHNOLOGY","KNOWLEDGE","CHALLENGE","CELEBRATION","UNIVERSITY","COMMUNICATION","IMAGINATION",
+  "RESPONSIBLE","EXPERIENCE","UNDERSTAND","DIFFERENCE","BEAUTIFUL","IMPORTANT","DIFFICULT","FANTASTIC","WONDERFUL","DELICIOUS"
+];
+
+function randomHangmanWord(){
+  return HANGMAN_WORDS[Math.floor(Math.random()*HANGMAN_WORDS.length)];
+}
+
 function initialState(game){
   if(game==="ttt") return {cells:Array(9).fill(""),winner:null};
   if(game==="connect4") return {cells:Array(42).fill(""),winner:null};
@@ -199,18 +225,26 @@ function initialState(game){
   if(game==="gomoku") return {cells:Array(225).fill(""),winner:null};
   if(game==="battle2048") return {boards:{A:spawn2048(spawn2048(Array(16).fill(0))),B:spawn2048(spawn2048(Array(16).fill(0)))},scores:{A:0,B:0},moves:{A:0,B:0},winner:null};
   if(game==="hangman"){
-    const words=["FIREBASE","ANDROID","GAMING","PLAYER","ROCKET","PUZZLE","PLANET","JUNGLE","CAMERA","BANANA"];
-    return {word:words[Math.floor(Math.random()*words.length)],guessed:[],wrong:{A:0,B:0},winner:null};
+    return {
+      mode:null,
+      phase:"choose",
+      word:"",
+      setter:"A",
+      guessed:[],
+      wrong:{A:0,B:0},
+      winner:null,
+      last:""
+    };
   }
-  if(game==="quiz") return {index:0,scores:{A:0,B:0},winner:null};
+  if(game==="quiz") return {index:Math.floor(Math.random()*QUIZ_BANK.length),scores:{A:0,B:0},winner:null};
   if(game==="math") return makeMathState();
   if(game==="numberguess") return {target:Math.floor(Math.random()*100)+1,lastGuess:null,hint:"1 - 100",winner:null};
-  if(game==="snake") return {heads:{A:55,B:65},food:60,scores:{A:0,B:0},turns:0,winner:null};
-  if(game==="pong") return {ball:1,rally:0,scores:{A:0,B:0},winner:null};
-  if(game==="airhockey") return {scores:{A:0,B:0},round:1,last:"",winner:null};
-  if(game==="snakesladders") return {pos:{A:1,B:1},lastRoll:null,winner:null};
-  if(game==="penalty") return {round:1,shots:{},scores:{A:0,B:0},winner:null,last:""};
-  if(game==="reaction") return {round:1,readyAt:Date.now()+1200+Math.floor(Math.random()*2200),taps:{},scores:{A:0,B:0},winner:null,last:""};
+  if(game==="snake") return {bodies:{A:[55,56,57],B:[44,43,42]},dirs:{A:"left",B:"right"},food:50,scores:{A:0,B:0},winner:null};
+  if(game==="pong") return {ballLane:1,rally:0,scores:{A:0,B:0},winner:null,last:"Move paddle to the ball lane"};
+  if(game==="airhockey") return {scores:{A:0,B:0},round:1,puckLane:1,strikerLane:{A:1,B:1},last:"Drag your striker, then shoot",winner:null};
+  if(game==="snakesladders") return {pos:{A:1,B:1},lastRoll:null,last:"Roll the dice",winner:null};
+  if(game==="penalty") return {round:1,scores:{A:0,B:0},shots:{A:0,B:0},last:"Choose a corner",winner:null};
+  if(game==="reaction") return {round:1,phase:"countdown",countdown:3,readyAt:0,goAt:0,scores:{A:0,B:0},times:{A:[],B:[]},last:"",winner:null};
   if(game==="puzzle"){
     const p=shufflePuzzle();
     return {boards:{A:p,B:[...p]},moves:{A:0,B:0},winner:null};
@@ -264,14 +298,136 @@ function shufflePuzzle(){
 }
 function isPuzzleSolved(a){return a.join(",")==="1,2,3,4,5,6,7,8,0"}
 const QUIZ_BANK=[
-  {q:"Which planet is known as the Red Planet?",a:["Earth","Mars","Venus","Jupiter"],ok:1},
-  {q:"How many days are in a leap year?",a:["365","366","364","360"],ok:1},
-  {q:"Which is the largest ocean?",a:["Atlantic","Indian","Pacific","Arctic"],ok:2},
-  {q:"What is H₂O?",a:["Salt","Water","Oxygen","Hydrogen"],ok:1},
-  {q:"How many sides does a hexagon have?",a:["5","6","7","8"],ok:1},
-  {q:"Which animal is known for black and white stripes?",a:["Tiger","Zebra","Panda","Horse"],ok:1},
-  {q:"What is 12 × 12?",a:["124","132","144","154"],ok:2},
-  {q:"Which device measures temperature?",a:["Barometer","Thermometer","Speedometer","Compass"],ok:1}
+  {"q": "Which planet is known as the Red Planet?", "a": ["Earth", "Mars", "Venus", "Jupiter"], "ok": 1},
+  {"q": "How many days are in a leap year?", "a": ["365", "366", "364", "360"], "ok": 1},
+  {"q": "Which is the largest ocean?", "a": ["Atlantic", "Indian", "Pacific", "Arctic"], "ok": 2},
+  {"q": "What is H₂O?", "a": ["Salt", "Water", "Oxygen", "Hydrogen"], "ok": 1},
+  {"q": "How many sides does a hexagon have?", "a": ["5", "6", "7", "8"], "ok": 1},
+  {"q": "Which animal is known for black and white stripes?", "a": ["Tiger", "Zebra", "Panda", "Horse"], "ok": 1},
+  {"q": "What is 12 × 12?", "a": ["124", "132", "144", "154"], "ok": 2},
+  {"q": "Which device measures temperature?", "a": ["Barometer", "Thermometer", "Speedometer", "Compass"], "ok": 1},
+  {"q": "What is the capital of Japan?", "a": ["Seoul", "Tokyo", "Beijing", "Bangkok"], "ok": 1},
+  {"q": "Which gas do plants mainly absorb?", "a": ["Oxygen", "Carbon dioxide", "Nitrogen", "Helium"], "ok": 1},
+  {"q": "How many continents are there?", "a": ["5", "6", "7", "8"], "ok": 2},
+  {"q": "Which is the largest planet in our solar system?", "a": ["Earth", "Saturn", "Jupiter", "Neptune"], "ok": 2},
+  {"q": "What is the freezing point of water in Celsius?", "a": ["0°C", "10°C", "32°C", "100°C"], "ok": 0},
+  {"q": "Which organ pumps blood around the body?", "a": ["Lung", "Heart", "Liver", "Kidney"], "ok": 1},
+  {"q": "What do bees make?", "a": ["Milk", "Honey", "Silk", "Wax only"], "ok": 1},
+  {"q": "Which country is famous for the pyramids of Giza?", "a": ["Mexico", "Egypt", "India", "Greece"], "ok": 1},
+  {"q": "Which metal is liquid at room temperature?", "a": ["Iron", "Mercury", "Copper", "Aluminium"], "ok": 1},
+  {"q": "How many hours are in one day?", "a": ["12", "18", "24", "36"], "ok": 2},
+  {"q": "Which is the fastest land animal?", "a": ["Lion", "Cheetah", "Horse", "Tiger"], "ok": 1},
+  {"q": "Which shape has three sides?", "a": ["Square", "Triangle", "Circle", "Pentagon"], "ok": 1},
+  {"q": "Which language is mainly used to style web pages?", "a": ["HTML", "CSS", "SQL", "Python"], "ok": 1},
+  {"q": "Which language is commonly used for browser scripting?", "a": ["JavaScript", "C", "Kotlin", "Swift"], "ok": 0},
+  {"q": "Which unit is used to measure electric current?", "a": ["Volt", "Ampere", "Watt", "Ohm"], "ok": 1},
+  {"q": "Which planet has prominent rings?", "a": ["Mars", "Venus", "Saturn", "Mercury"], "ok": 2},
+  {"q": "How many minutes are in one hour?", "a": ["30", "45", "60", "90"], "ok": 2},
+  {"q": "What is 1000 grams equal to?", "a": ["1 kg", "10 kg", "100 kg", "0.1 kg"], "ok": 0},
+  {"q": "Which animal is the largest mammal?", "a": ["Elephant", "Blue whale", "Giraffe", "Hippo"], "ok": 1},
+  {"q": "What color do you get by mixing red and blue?", "a": ["Green", "Purple", "Orange", "Yellow"], "ok": 1},
+  {"q": "Which part of a plant usually absorbs water from soil?", "a": ["Leaf", "Flower", "Root", "Fruit"], "ok": 2},
+  {"q": "How many letters are in the English alphabet?", "a": ["24", "25", "26", "27"], "ok": 2},
+  {"q": "ශ්‍රී ලංකාවේ අගනුවර කුමක්ද?", "a": ["කොළඹ", "ශ්‍රී ජයවර්ධනපුර කෝට්ටේ", "ගාල්ල", "මහනුවර"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ දිගම ගඟ කුමක්ද?", "a": ["කැලණි ගඟ", "මහවැලි ගඟ", "කළු ගඟ", "වලවේ ගඟ"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ ජාතික මල කුමක්ද?", "a": ["නිල් මානෙල්", "රෝස", "අරලිය", "නෙළුම්"], "ok": 0},
+  {"q": "ශ්‍රී ලංකාවේ ජාතික පක්ෂියා කුමක්ද?", "a": ["මයුරා", "ශ්‍රී ලංකා වළිකුකුළා", "ගිරවා", "කොකා"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ ජාතික ක්‍රීඩාව කුමක්ද?", "a": ["ක්‍රිකට්", "වොලිබෝල්", "පාපන්දු", "රගර්"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ මුදල් ඒකකය කුමක්ද?", "a": ["ඩොලර්", "රුපියල්", "යුරෝ", "යෙන්"], "ok": 1},
+  {"q": "සිංහල අලුත් අවුරුද්ද සාමාන්‍යයෙන් පැවැත්වෙන්නේ කුමන මාසයේද?", "a": ["මාර්තු", "අප්‍රේල්", "මැයි", "ජූනි"], "ok": 1},
+  {"q": "දළදා මාලිගාව පිහිටා ඇත්තේ කොහේද?", "a": ["අනුරාධපුරය", "කොළඹ", "මහනුවර", "ගාල්ල"], "ok": 2},
+  {"q": "සීගිරිය පිහිටා ඇත්තේ කුමන දිස්ත්‍රික්කයේද?", "a": ["මාතලේ", "ගාල්ල", "කුරුණෑගල", "කෑගල්ල"], "ok": 0},
+  {"q": "ශ්‍රී ලංකාවේ උසම කන්ද කුමක්ද?", "a": ["සිරිපාදය", "කිරිගල්පොත්ත", "පිදුරුතලාගල", "නමුණුකුල"], "ok": 2},
+  {"q": "ශ්‍රී ලංකාව වටා ඇති සාගරය කුමක්ද?", "a": ["අත්ලාන්තික් සාගරය", "ඉන්දියන් සාගරය", "පැසිෆික් සාගරය", "ආක්ටික් සාගරය"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ ප්‍රධාන තේ වගා ප්‍රදේශයක් වන්නේ?", "a": ["නුවරඑළිය", "මන්නාරම", "හම්බන්තොට", "යාපනය"], "ok": 0},
+  {"q": "ගාලු කොටුව ඉදිකර ඇත්තේ මූලිකව කවුද?", "a": ["පෘතුගීසීන්", "ලන්දේසීන්", "බ්‍රිතාන්‍යයන්", "ප්‍රංශයන්"], "ok": 0},
+  {"q": "අනුරාධපුර යුගයට අයත් ප්‍රසිද්ධ ස්ථූපයක් කුමක්ද?", "a": ["රුවන්වැලිසෑය", "දළදා මාලිගාව", "ගාලු කොටුව", "නෙළුම් කුළුණ"], "ok": 0},
+  {"q": "ශ්‍රී ලංකාවේ වැඩිම ජනගහනයක් ඇති දිස්ත්‍රික්කය කුමක්ද?", "a": ["කොළඹ", "ගම්පහ", "මහනුවර", "කුරුණෑගල"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ නිල භාෂා දෙක කුමක්ද?", "a": ["සිංහල සහ ඉංග්‍රීසි", "සිංහල සහ දෙමළ", "දෙමළ සහ ඉංග්‍රීසි", "සිංහල පමණයි"], "ok": 1},
+  {"q": "ශ්‍රී ලංකා ධජයේ සිංහයා අතේ ඇත්තේ කුමක්ද?", "a": ["කඩුවක්", "මලක්", "ධජයක්", "හෙල්ලයක්"], "ok": 0},
+  {"q": "ශ්‍රී ලංකාවේ ප්‍රසිද්ධ යාල ජාතික උද්‍යානය ප්‍රසිද්ධ වන්නේ කුමන සත්වයා සඳහාද?", "a": ["අලි", "දිවියා", "වඳුරා", "මුවා"], "ok": 1},
+  {"q": "ශ්‍රී ලංකාවේ පැරණි රාජධානියක් නොවන්නේ කුමක්ද?", "a": ["අනුරාධපුරය", "පොළොන්නරුව", "දඹදෙණිය", "මීගමුව"], "ok": 3},
+  {"q": "ශ්‍රී ලංකාවේ ප්‍රධාන ජාත්‍යන්තර ගුවන් තොටුපළක් කුමක්ද?", "a": ["බණ්ඩාරනායක ජාත්‍යන්තර ගුවන් තොටුපළ", "රත්මලාන", "චීන වරාය", "වව්නියාව"], "ok": 0},
+  {"q": "ජලය සෙල්සියස් අංශක කීයකදී ගැලවෙයිද?", "a": ["0", "10", "50", "100"], "ok": 0},
+  {"q": "මිනිස් ශරීරයේ ලේ පොම්ප කරන අවයවය කුමක්ද?", "a": ["අක්මාව", "හෘදය", "වකුගඩු", "පෙනහළු"], "ok": 1},
+  {"q": "ශාක ආලෝක සංස්ලේෂණයට අවශ්‍ය වායුව කුමක්ද?", "a": ["ඔක්සිජන්", "කාබන් ඩයොක්සයිඩ්", "හීලියම්", "හයිඩ්‍රජන්"], "ok": 1},
+  {"q": "පෘථිවියේ ස්වාභාවික උපග්‍රහයා කුමක්ද?", "a": ["සූර්යයා", "සඳ", "අඟහරු", "ශුක්‍ර"], "ok": 1},
+  {"q": "සූර්යයා කුමක්ද?", "a": ["ග්‍රහලෝකයක්", "තරුවක්", "චන්ද්‍රයෙක්", "ධූමකේතුවක්"], "ok": 1},
+  {"q": "විදුලි බලයේ ඒකකයක් කුමක්ද?", "a": ["වොට්", "මීටර්", "ලීටර්", "ග්‍රෑම්"], "ok": 0},
+  {"q": "ශබ්දය ගමන් කිරීමට අවශ්‍ය වන්නේ?", "a": ["මාධ්‍යයක්", "ආලෝකය", "චුම්බකයක්", "විදුලිය"], "ok": 0},
+  {"q": "මිනිස් ශරීරයේ විශාලම අවයවය කුමක්ද?", "a": ["හෘදය", "සම", "අක්මාව", "මොළය"], "ok": 1},
+  {"q": "ඇස් වලින් අපි දකින්නේ කුමන ශක්තිය නිසාද?", "a": ["තාපය", "ආලෝකය", "ශබ්දය", "චුම්බකය"], "ok": 1},
+  {"q": "ශාකයක ජලය වැඩිපුර අවශෝෂණය කරන්නේ?", "a": ["මුල්", "පත්‍ර", "මල්", "බීජ"], "ok": 0},
+  {"q": "What is 25 + 37?", "a": ["52", "62", "72", "82"], "ok": 1},
+  {"q": "What is 9 × 8?", "a": ["63", "72", "81", "64"], "ok": 1},
+  {"q": "What is 144 ÷ 12?", "a": ["10", "11", "12", "13"], "ok": 2},
+  {"q": "What is 15% of 200?", "a": ["20", "25", "30", "35"], "ok": 2},
+  {"q": "What is the square root of 81?", "a": ["7", "8", "9", "10"], "ok": 2},
+  {"q": "If a triangle has angles 60°, 60°, 60°, what type is it?", "a": ["Right", "Equilateral", "Scalene", "Obtuse"], "ok": 1},
+  {"q": "What is 7²?", "a": ["14", "42", "49", "56"], "ok": 2},
+  {"q": "What is 3³?", "a": ["9", "18", "27", "81"], "ok": 2},
+  {"q": "What is 1/2 + 1/4?", "a": ["1/4", "1/2", "3/4", "1"], "ok": 2},
+  {"q": "What is 0.5 as a percentage?", "a": ["5%", "50%", "500%", "0.5%"], "ok": 1},
+  {"q": "What does CPU stand for?", "a": ["Central Processing Unit", "Computer Power Unit", "Core Processing Utility", "Central Program User"], "ok": 0},
+  {"q": "Which protocol is used for secure websites?", "a": ["HTTP", "HTTPS", "FTP", "SMTP"], "ok": 1},
+  {"q": "What does RAM store mainly?", "a": ["Temporary working data", "Printed pages", "Permanent files only", "Internet cables"], "ok": 0},
+  {"q": "Which device connects multiple devices in a local network?", "a": ["Router", "Keyboard", "Printer", "Monitor"], "ok": 0},
+  {"q": "What does Wi‑Fi provide?", "a": ["Wireless networking", "Battery charging only", "Printing only", "GPS only"], "ok": 0},
+  {"q": "What does URL stand for?", "a": ["Uniform Resource Locator", "Universal Router Link", "User Resource Login", "Unified Remote Line"], "ok": 0},
+  {"q": "Which file extension is commonly used for JavaScript?", "a": [".js", ".css", ".jpg", ".txt"], "ok": 0},
+  {"q": "Which file extension is commonly used for web page markup?", "a": [".html", ".mp3", ".apk", ".zip"], "ok": 0},
+  {"q": "Which database is used in this game app setup?", "a": ["Firebase Realtime Database", "Excel only", "Photoshop", "Bluetooth"], "ok": 0},
+  {"q": "What does API commonly mean?", "a": ["Application Programming Interface", "Automatic Phone Internet", "App Power Input", "Advanced Program Image"], "ok": 0},
+  {"q": "Which bird cannot fly?", "a": ["Eagle", "Penguin", "Parrot", "Crow"], "ok": 1},
+  {"q": "Which animal is known for changing color?", "a": ["Chameleon", "Elephant", "Dog", "Horse"], "ok": 0},
+  {"q": "Which animal has the longest neck?", "a": ["Camel", "Giraffe", "Zebra", "Deer"], "ok": 1},
+  {"q": "Which animal lives both on land and in water?", "a": ["Frog", "Cat", "Eagle", "Goat"], "ok": 0},
+  {"q": "Which insect has colorful wings?", "a": ["Ant", "Butterfly", "Bee", "Beetle"], "ok": 1},
+  {"q": "Which animal is called the king of the jungle?", "a": ["Tiger", "Lion", "Bear", "Wolf"], "ok": 1},
+  {"q": "Which animal carries its baby in a pouch?", "a": ["Kangaroo", "Horse", "Cow", "Elephant"], "ok": 0},
+  {"q": "Which sea animal has eight arms?", "a": ["Shark", "Octopus", "Dolphin", "Whale"], "ok": 1},
+  {"q": "Which is a reptile?", "a": ["Frog", "Snake", "Rabbit", "Sparrow"], "ok": 1},
+  {"q": "Which animal is famous for building dams?", "a": ["Beaver", "Fox", "Tiger", "Camel"], "ok": 0},
+  {"q": "What is the capital of France?", "a": ["Rome", "Paris", "Berlin", "Madrid"], "ok": 1},
+  {"q": "What is the capital of Australia?", "a": ["Sydney", "Melbourne", "Canberra", "Perth"], "ok": 2},
+  {"q": "Which country is shaped like a boot?", "a": ["Spain", "Italy", "Greece", "Portugal"], "ok": 1},
+  {"q": "Mount Everest is part of which mountain range?", "a": ["Andes", "Alps", "Himalayas", "Rockies"], "ok": 2},
+  {"q": "Which desert is the largest hot desert?", "a": ["Gobi", "Sahara", "Kalahari", "Atacama"], "ok": 1},
+  {"q": "Which river flows through Egypt?", "a": ["Amazon", "Nile", "Yangtze", "Danube"], "ok": 1},
+  {"q": "Which country has the city of Dubai?", "a": ["Qatar", "United Arab Emirates", "Saudi Arabia", "Oman"], "ok": 1},
+  {"q": "Which country is famous for the Eiffel Tower?", "a": ["Italy", "France", "Germany", "Belgium"], "ok": 1},
+  {"q": "Which country is known for the Great Wall?", "a": ["China", "Japan", "India", "Korea"], "ok": 0},
+  {"q": "Which city is famous for the Statue of Liberty?", "a": ["London", "New York", "Paris", "Toronto"], "ok": 1},
+  {"q": "සතියකට දින කීයක් තිබේද?", "a": ["5", "6", "7", "8"], "ok": 2},
+  {"q": "පැයකට මිනිත්තු කීයක් තිබේද?", "a": ["30", "45", "60", "90"], "ok": 2},
+  {"q": "කිලෝග්‍රෑම් 1ක් ග්‍රෑම් කීයක්ද?", "a": ["100", "500", "1000", "1500"], "ok": 2},
+  {"q": "ලීටර් 1ක් මිලිලීටර් කීයක්ද?", "a": ["100", "500", "1000", "2000"], "ok": 2},
+  {"q": "රතු සහ නිල් වර්ණ මිශ්‍ර කළ විට ලැබෙන්නේ?", "a": ["කොළ", "දම්", "කහ", "කළු"], "ok": 1},
+  {"q": "රථයක වේගය මැනීමට භාවිත කරන උපකරණය?", "a": ["ථර්මෝමීටරය", "ස්පීඩෝමීටරය", "බැරෝමීටරය", "කම්පාස්"], "ok": 1},
+  {"q": "අපිට ශ්‍රවණයට උපකාර කරන අවයවය?", "a": ["ඇස", "කන", "නාසය", "දිව"], "ok": 1},
+  {"q": "අපිට රස දැනෙන්නේ කුමන අවයවයෙන්ද?", "a": ["දිව", "ඇස", "කන", "අත"], "ok": 0},
+  {"q": "දවසේ ආලෝකය ලැබෙන්නේ ප්‍රධාන වශයෙන් කුමකින්ද?", "a": ["සඳ", "සූර්යයා", "තරු", "විදුලි බල්බ"], "ok": 1},
+  {"q": "ගින්න නිවා දැමීමට සාමාන්‍යයෙන් භාවිත කරන එකක් කුමක්ද?", "a": ["වතුර", "පෙට්‍රල්", "තෙල්", "ගෑස්"], "ok": 0},
+  {"q": "How many players are on the field for one football team?", "a": ["9", "10", "11", "12"], "ok": 2},
+  {"q": "In cricket, how many runs is a boundary over the rope without bouncing?", "a": ["4", "5", "6", "8"], "ok": 2},
+  {"q": "Which sport uses a racket and shuttlecock?", "a": ["Tennis", "Badminton", "Squash", "Baseball"], "ok": 1},
+  {"q": "How many rings are in the Olympic symbol?", "a": ["4", "5", "6", "7"], "ok": 1},
+  {"q": "Which sport uses a hoop and backboard?", "a": ["Basketball", "Volleyball", "Tennis", "Rugby"], "ok": 0},
+  {"q": "Which sport is played at Wimbledon?", "a": ["Cricket", "Tennis", "Golf", "Hockey"], "ok": 1},
+  {"q": "How many players are on court for one volleyball team?", "a": ["5", "6", "7", "8"], "ok": 1},
+  {"q": "Which sport uses a puck?", "a": ["Ice hockey", "Football", "Basketball", "Tennis"], "ok": 0},
+  {"q": "Which sport has innings and wickets?", "a": ["Cricket", "Rugby", "Swimming", "Boxing"], "ok": 0},
+  {"q": "Which sport is associated with a checkered flag?", "a": ["Motor racing", "Swimming", "Tennis", "Badminton"], "ok": 0},
+  {"q": "Which month has 28 days in a common year?", "a": ["February", "April", "June", "September"], "ok": 0},
+  {"q": "Which month comes after September?", "a": ["August", "October", "November", "December"], "ok": 1},
+  {"q": "What is the opposite of 'hot'?", "a": ["Warm", "Cold", "Dry", "Soft"], "ok": 1},
+  {"q": "Which is a primary color?", "a": ["Red", "Green", "Pink", "Brown"], "ok": 0},
+  {"q": "Which number comes next: 2, 4, 6, 8, ?", "a": ["9", "10", "11", "12"], "ok": 1},
+  {"q": "Which tool is used to cut paper?", "a": ["Spoon", "Scissors", "Cup", "Plate"], "ok": 1},
+  {"q": "Which part of a computer shows images?", "a": ["Monitor", "Mouse", "Keyboard", "Speaker"], "ok": 0},
+  {"q": "Which device is used to move a pointer on a computer?", "a": ["Printer", "Mouse", "Router", "Scanner"], "ok": 1},
+  {"q": "Which is used to take photographs?", "a": ["Camera", "Speaker", "Keyboard", "Fan"], "ok": 0},
+  {"q": "Which is used to print receipts?", "a": ["Thermal printer", "Router", "Monitor", "Battery"], "ok": 0}
 ];
 
 function checkersStart(){
@@ -896,6 +1052,66 @@ function gomokuWinner(c){
   for(let r=0;r<15;r++)for(let col=0;col<15;col++){const m=c[r*15+col];if(!m)continue;for(const[dr,dc]of[[0,1],[1,0],[1,1],[1,-1]]){let ok=true;for(let k=1;k<5;k++){const rr=r+dr*k,cc=col+dc*k;if(rr<0||rr>=15||cc<0||cc>=15||c[rr*15+cc]!==m){ok=false;break}}if(ok)return m}}
   return c.every(Boolean)?"draw":null;
 }
+
+function gomokuLineScore(cells,idx,mark){
+  if(cells[idx])return -Infinity;
+  const r=Math.floor(idx/15),c=idx%15;
+  let total=0;
+  for(const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]){
+    let count=1,open=0;
+    for(const sign of [-1,1]){
+      let rr=r+dr*sign,cc=c+dc*sign;
+      while(rr>=0&&rr<15&&cc>=0&&cc<15&&cells[rr*15+cc]===mark){
+        count++;
+        rr+=dr*sign;cc+=dc*sign;
+      }
+      if(rr>=0&&rr<15&&cc>=0&&cc<15&&!cells[rr*15+cc])open++;
+    }
+    if(count>=5) total+=100000;
+    else if(count===4 && open===2) total+=12000;
+    else if(count===4 && open===1) total+=5000;
+    else if(count===3 && open===2) total+=1800;
+    else if(count===3 && open===1) total+=500;
+    else if(count===2 && open===2) total+=180;
+    else if(count===2 && open===1) total+=60;
+    else total+=count*8;
+  }
+  return total;
+}
+function gomokuBestBotMove(cells){
+  const empty=cells.map((v,i)=>!v?i:-1).filter(i=>i>=0);
+  if(!empty.length)return null;
+  for(const i of empty){
+    const t=[...cells];t[i]="B";
+    if(gomokuWinner(t)==="B")return i;
+  }
+  for(const i of empty){
+    const t=[...cells];t[i]="A";
+    if(gomokuWinner(t)==="A")return i;
+  }
+  let candidates=empty.filter(i=>{
+    const r=Math.floor(i/15),c=i%15;
+    for(let dr=-2;dr<=2;dr++){
+      for(let dc=-2;dc<=2;dc++){
+        if(!dr&&!dc)continue;
+        const rr=r+dr,cc=c+dc;
+        if(rr>=0&&rr<15&&cc>=0&&cc<15&&cells[rr*15+cc])return true;
+      }
+    }
+    return false;
+  });
+  if(!candidates.length)candidates=[112];
+  let best=candidates[0],bestScore=-Infinity;
+  for(const i of candidates){
+    const attack=gomokuLineScore(cells,i,"B");
+    const defend=gomokuLineScore(cells,i,"A");
+    const rr=Math.floor(i/15),cc=i%15;
+    const centerBonus=14-(Math.abs(rr-7)+Math.abs(cc-7));
+    const score=attack*1.05 + defend*1.18 + centerBonus + Math.random()*12;
+    if(score>bestScore){bestScore=score;best=i}
+  }
+  return best;
+}
 function renderGomoku(st,turn){const b=$("#gameBoard");b.className="game-board gomoku-board";b.innerHTML="";setStatus(st.winner?(st.winner==="draw"?"Draw":st.winner===myMark?"You win!":"Opponent wins"):canMove(turn)?"Your turn":"Opponent's turn");st.cells.forEach((v,i)=>{const c=document.createElement("button");c.className="cell";c.textContent=v==="A"?"●":v==="B"?"○":"";c.onclick=()=>gomokuMove(st,turn,i);b.appendChild(c)})}
 async function gomokuMove(st,turn,i){if(!canMove(turn)||st.winner||st.cells[i])return;const n={...st,cells:[...st.cells]};n.cells[i]=myMark;n.winner=gomokuWinner(n.cells);await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
 
@@ -915,20 +1131,222 @@ async function move2048(st,dir){
 }
 
 // ---------- Hangman Duel ----------
-function renderHangman(st,turn){
-  const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";
-  const word=st.word.split("").map(ch=>st.guessed.includes(ch)?ch:"_").join(" ");
-  const h=document.createElement("div");h.className="word-display";h.textContent=word;b.appendChild(h);
-  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${canMove(turn)?"Your turn":"Opponent's turn"} • Misses ${st.wrong?.[myMark]||0}/6`);
-  const keys=document.createElement("div");keys.className="letter-grid";
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(ch=>{const q=document.createElement("button");q.textContent=ch;q.disabled=st.guessed.includes(ch)||!canMove(turn);q.onclick=()=>hangmanGuess(st,turn,ch);keys.appendChild(q)});b.appendChild(keys);
+function hangmanMaskedWord(st){
+  if(!st.word)return "";
+  return st.word.split("").map(ch=>st.guessed.includes(ch)?ch:"_").join(" ");
 }
+
+function hangmanGuesserMark(st){
+  if(st.mode==="player") return st.setter==="A"?"B":"A";
+  return null; // Random mode: both players guess alternately.
+}
+
+function renderHangman(st,turn){
+  const b=$("#gameBoard");
+  b.className="game-board text-game";
+  b.innerHTML="";
+
+  if(!st.mode || st.phase==="choose"){
+    setStatus("Choose Hangman mode");
+    const title=document.createElement("div");
+    title.className="question";
+    title.textContent="How do you want to play?";
+    b.appendChild(title);
+
+    const randomBtn=document.createElement("button");
+    randomBtn.className="answer-btn";
+    randomBtn.textContent="🎲 Random Word";
+    randomBtn.onclick=()=>chooseHangmanMode(st,"random");
+    b.appendChild(randomBtn);
+
+    const playerBtn=document.createElement("button");
+    playerBtn.className="answer-btn";
+    playerBtn.textContent="✍️ Player Secret Word";
+    playerBtn.onclick=()=>chooseHangmanMode(st,"player");
+    b.appendChild(playerBtn);
+    return;
+  }
+
+  if(st.mode==="player" && st.phase==="setup"){
+    const setter=st.setter||"A";
+    if(myMark===setter){
+      setStatus("Enter a secret word");
+      const info=document.createElement("div");
+      info.className="question";
+      info.textContent=botMode
+        ? "Type a secret word for the computer to guess"
+        : "Type a secret word for your opponent";
+      b.appendChild(info);
+
+      const inp=document.createElement("input");
+      inp.type="text";
+      inp.maxLength=20;
+      inp.placeholder="Secret word";
+      inp.className="game-input";
+      inp.autocomplete="off";
+      b.appendChild(inp);
+
+      const btn=document.createElement("button");
+      btn.className="primary mini";
+      btn.textContent="Start Guessing";
+      btn.onclick=()=>setHangmanSecret(st,inp.value);
+      b.appendChild(btn);
+    }else{
+      setStatus("Opponent is choosing a secret word…");
+      const wait=document.createElement("div");
+      wait.className="question";
+      wait.textContent="Waiting for secret word";
+      b.appendChild(wait);
+    }
+    return;
+  }
+
+  const wordDisplay=document.createElement("div");
+  wordDisplay.className="word-display";
+  wordDisplay.textContent=hangmanMaskedWord(st);
+  b.appendChild(wordDisplay);
+
+  const misses=document.createElement("div");
+  misses.className="hangman-info";
+  const guesser=hangmanGuesserMark(st);
+  if(st.mode==="player"){
+    const wrong=st.wrong?.[guesser]||0;
+    misses.textContent=`Wrong guesses: ${wrong}/8`;
+  }else{
+    misses.textContent=`Your misses: ${st.wrong?.[myMark]||0}/8`;
+  }
+  b.appendChild(misses);
+
+  if(st.winner){
+    setStatus(st.winner===myMark?"You win!":"Opponent wins");
+    return;
+  }
+
+  if(st.mode==="player"){
+    const setter=st.setter||"A";
+    const activeGuesser=setter==="A"?"B":"A";
+
+    if(myMark===setter){
+      setStatus(botMode ? "Computer is guessing…" : "Opponent is guessing…");
+      if(botMode && !botThinking){
+        setTimeout(()=>botMove(st),450);
+      }
+      return;
+    }
+
+    setStatus("Guess the secret word");
+  }else{
+    setStatus(canMove(turn)?"Your turn":"Opponent's turn");
+  }
+
+  const keys=document.createElement("div");
+  keys.className="letter-grid";
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(ch=>{
+    const q=document.createElement("button");
+    q.textContent=ch;
+    q.disabled=st.guessed.includes(ch) || (st.mode==="random" && !canMove(turn));
+    q.onclick=()=>hangmanGuess(st,turn,ch);
+    keys.appendChild(q);
+  });
+  b.appendChild(keys);
+}
+
+async function chooseHangmanMode(st,mode){
+  const n=JSON.parse(JSON.stringify(st));
+  n.mode=mode;
+  n.guessed=[];
+  n.wrong={A:0,B:0};
+  n.winner=null;
+  n.last="";
+
+  if(mode==="random"){
+    n.phase="guessing";
+    n.word=randomHangmanWord();
+    if(botMode){
+      renderState(n,uid);
+    }else{
+      await writeState(n,uid,"playing");
+    }
+  }else{
+    n.phase="setup";
+    n.setter=myMark; // The player who chooses this mode supplies the first word.
+    n.word="";
+    if(botMode){
+      renderState(n,uid);
+    }else{
+      await writeState(n,uid,"playing");
+    }
+  }
+}
+
+async function setHangmanSecret(st,value){
+  const clean=(value||"")
+    .toUpperCase()
+    .replace(/[^A-Z]/g,"")
+    .slice(0,20);
+
+  if(clean.length<3){
+    setStatus("Use at least 3 letters");
+    return;
+  }
+
+  const n=JSON.parse(JSON.stringify(st));
+  n.word=clean;
+  n.phase="guessing";
+  n.guessed=[];
+  n.wrong={A:0,B:0};
+  n.winner=null;
+
+  if(botMode){
+    renderState(n,"BOT");
+    setTimeout(()=>botMove(n),500);
+  }else{
+    const guesser=n.setter==="A"?opponent.uid:uid;
+    await writeState(n,guesser,"playing");
+  }
+}
+
 async function hangmanGuess(st,turn,ch){
-  if(!canMove(turn)||st.winner||st.guessed.includes(ch))return;const n=JSON.parse(JSON.stringify(st));n.guessed.push(ch);
-  if(!n.word.includes(ch))n.wrong[myMark]=(n.wrong[myMark]||0)+1;
-  if(n.word.split("").every(x=>n.guessed.includes(x)))n.winner=myMark;
-  else if(n.wrong[myMark]>=6)n.winner=myMark==="A"?"B":"A";
-  await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+  if(st.winner||st.guessed.includes(ch))return;
+
+  if(st.mode==="random" && !canMove(turn))return;
+  if(st.mode==="player"){
+    const guesser=st.setter==="A"?"B":"A";
+    if(myMark!==guesser)return;
+  }
+
+  const n=JSON.parse(JSON.stringify(st));
+  n.guessed.push(ch);
+
+  const guesserMark=st.mode==="player"
+    ? (st.setter==="A"?"B":"A")
+    : myMark;
+
+  if(!n.word.includes(ch)){
+    n.wrong[guesserMark]=(n.wrong[guesserMark]||0)+1;
+  }
+
+  if(n.word.split("").every(x=>n.guessed.includes(x))){
+    n.winner=guesserMark;
+  }else if((n.wrong[guesserMark]||0)>=8){
+    n.winner=st.mode==="player"
+      ? st.setter
+      : (myMark==="A"?"B":"A");
+  }
+
+  if(botMode){
+    renderState(n,uid);
+    if(n.winner)finishLocal(n.winner);
+    else if(st.mode==="random")setTimeout(()=>botMove(n),450);
+    return;
+  }
+
+  if(st.mode==="player"){
+    const guesserUid=st.setter==="A"?opponent.uid:uid;
+    await writeState(n,guesserUid,n.winner?"finished":"playing");
+  }else{
+    await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+  }
 }
 
 // ---------- Quiz Battle ----------
@@ -941,7 +1359,7 @@ function renderQuiz(st,turn){
 async function quizAnswer(st,turn,i){
   if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st)),q=QUIZ_BANK[n.index%QUIZ_BANK.length];
   if(i===q.ok)n.scores[myMark]=(n.scores[myMark]||0)+1;
-  n.index++;if(n.scores[myMark]>=5)n.winner=myMark;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+  n.index=(n.index+17)%QUIZ_BANK.length;if(n.scores[myMark]>=5)n.winner=myMark;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
 }
 
 // ---------- Math Duel ----------
@@ -964,39 +1382,82 @@ function renderNumberGuess(st,turn){
 }
 async function numberGuess(st,turn,v){if(!canMove(turn)||st.winner||v<1||v>100)return;const n=JSON.parse(JSON.stringify(st));n.lastGuess=v;if(v===n.target)n.winner=myMark;else n.hint=v<n.target?`Higher than ${v}`:`Lower than ${v}`;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
 
-// ---------- Snake Duel (turn-step web version) ----------
+// ---------- Snake Duel ----------
+let snakeTimer=null;
+function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}}
+function snakeNext(pos,dir){let r=Math.floor(pos/10),c=pos%10;if(dir==="up")r=(r+9)%10;if(dir==="down")r=(r+1)%10;if(dir==="left")c=(c+9)%10;if(dir==="right")c=(c+1)%10;return r*10+c}
+function snakeOpposite(a,b){return (a==="up"&&b==="down")||(a==="down"&&b==="up")||(a==="left"&&b==="right")||(a==="right"&&b==="left")}
 function renderSnake(st,turn){
-  const b=$("#gameBoard");b.className="game-board";b.innerHTML="";const g=document.createElement("div");g.className="snake-grid";
-  for(let i=0;i<100;i++){const c=document.createElement("div");c.className="snake-cell";if(i===st.food)c.textContent="🍎";if(i===st.heads.A)c.textContent="🐍";if(i===st.heads.B)c.textContent="🟣";g.appendChild(c)}b.appendChild(g);
-  const ctl=document.createElement("div");ctl.className="dir-pad";["up","left","down","right"].forEach(d=>{const q=document.createElement("button");q.textContent={up:"↑",left:"←",down:"↓",right:"→"}[d];q.onclick=()=>snakeMove(st,turn,d);ctl.appendChild(q)});b.appendChild(ctl);
-  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${canMove(turn)?"Your move":"Opponent's move"} • ${st.scores.A}-${st.scores.B}`);
+  const b=$("#gameBoard");b.className="game-board snake-duel-wrap";b.innerHTML="";
+  const g=document.createElement("div");g.className="snake-grid snake-live";
+  for(let i=0;i<100;i++){const cell=document.createElement("div");cell.className="snake-cell";if(i===st.food)cell.textContent="🍎";if(st.bodies.A.includes(i))cell.classList.add("snake-a");if(st.bodies.B.includes(i))cell.classList.add("snake-b");g.appendChild(cell)}
+  b.appendChild(g);
+  const ctl=document.createElement("div");ctl.className="snake-controls";
+  [["up","↑"],["left","←"],["down","↓"],["right","→"]].forEach(([d,t])=>{const q=document.createElement("button");q.textContent=t;q.onclick=()=>snakeDirection(st,d);ctl.appendChild(q)});b.appendChild(ctl);
+  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.scores[myMark]||0} • Opponent ${st.scores[myMark==="A"?"B":"A"]||0}`);
+  if(botMode&&!snakeTimer&&!st.winner){let live=JSON.parse(JSON.stringify(st));snakeTimer=setInterval(()=>{if(currentGame?.id!=="snake"||gameFinished){clearSnakeTimer();return}live=snakeTick(live);renderSnakeFrame(live);if(live.winner){clearSnakeTimer();finishLocal(live.winner)}},360)}
 }
-async function snakeMove(st,turn,d){
-  if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));let p=n.heads[myMark],r=Math.floor(p/10),c=p%10;if(d==="up")r=(r+9)%10;if(d==="down")r=(r+1)%10;if(d==="left")c=(c+9)%10;if(d==="right")c=(c+1)%10;p=r*10+c;n.heads[myMark]=p;n.turns++;
-  if(p===n.food){n.scores[myMark]++;n.food=Math.floor(Math.random()*100)}if(n.heads.A===n.heads.B)n.winner=myMark;if(n.scores[myMark]>=5)n.winner=myMark;
-  await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
-}
+function renderSnakeFrame(st){const cells=[...document.querySelectorAll(".snake-live .snake-cell")];if(!cells.length)return;cells.forEach((x,i)=>{x.className="snake-cell";x.textContent=i===st.food?"🍎":""});st.bodies.A.forEach(i=>cells[i]?.classList.add("snake-a"));st.bodies.B.forEach(i=>cells[i]?.classList.add("snake-b"));setStatus(st.winner?(st.winner===myMark?"You win!":"Computer wins"):`You ${st.scores.A||0} • Computer ${st.scores.B||0}`)}
+function snakeDirection(st,d){const cur=st.dirs[myMark];if(snakeOpposite(cur,d))return;st.dirs[myMark]=d;if(!botMode)writeState(st,uid,"playing")}
+function snakeTick(st){const n=JSON.parse(JSON.stringify(st));const dirs=["up","down","left","right"];if(botMode&&Math.random()<.28){const head=n.bodies.B[0],hr=Math.floor(head/10),hc=head%10,fr=Math.floor(n.food/10),fc=n.food%10;let choices=[];if(fr<hr)choices.push("up");if(fr>hr)choices.push("down");if(fc<hc)choices.push("left");if(fc>hc)choices.push("right");choices=choices.filter(d=>!snakeOpposite(n.dirs.B,d));if(choices.length)n.dirs.B=choices[Math.floor(Math.random()*choices.length)]}
+  for(const mark of ["A","B"]){const body=n.bodies[mark],head=snakeNext(body[0],n.dirs[mark]);body.unshift(head);if(head===n.food){n.scores[mark]++;let empty=[...Array(100).keys()].filter(i=>!n.bodies.A.includes(i)&&!n.bodies.B.includes(i));n.food=empty[Math.floor(Math.random()*empty.length)]??0}else body.pop()}
+  const ha=n.bodies.A[0],hb=n.bodies.B[0];if(ha===hb||n.bodies.A.slice(1).includes(ha))n.winner="B";if(n.bodies.B.slice(1).includes(hb))n.winner=n.winner?"draw":"A";if((n.scores.A||0)>=5)n.winner="A";if((n.scores.B||0)>=5)n.winner="B";return n}
+async function snakeMove(st,turn,d){snakeDirection(st,d)}
 
 // ---------- Pong ----------
-function renderPong(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";const ball=document.createElement("div");ball.className="pong-ball";ball.textContent=["⬅️","⏺️","➡️"][st.ball||1];b.appendChild(ball);["Left","Center","Right"].forEach((x,i)=>{const q=document.createElement("button");q.className="answer-btn";q.textContent=x;q.onclick=()=>pongHit(st,turn,i);b.appendChild(q)});setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${canMove(turn)?"Return the ball":"Opponent's turn"} • ${st.scores.A}-${st.scores.B}`)}
-async function pongHit(st,turn,zone){if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));if(zone===n.ball){n.rally++;n.ball=Math.floor(Math.random()*3)}else{const enemy=myMark==="A"?"B":"A";n.scores[enemy]++;n.rally=0;n.ball=Math.floor(Math.random()*3);if(n.scores[enemy]>=5)n.winner=enemy}await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function renderPong(st,turn){
+  const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";
+  const court=document.createElement("div");court.className="pong-court";court.innerHTML=`<div class="pong-score">${st.scores.A} : ${st.scores.B}</div><div class="pong-op-paddle"></div><div class="pong-ball lane-${st.ballLane}"></div><div class="pong-player-paddle lane-${st.paddleLane||1}"></div>`;b.appendChild(court);
+  const lanes=document.createElement("div");lanes.className="lane-controls";[0,1,2].forEach(i=>{const q=document.createElement("button");q.textContent=["← Left","Center","Right →"][i];q.onclick=()=>pongHit(st,turn,i);lanes.appendChild(q)});b.appendChild(lanes);
+  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${st.last||"Match the ball lane"} • Rally ${st.rally||0}`)
+}
+async function pongHit(st,turn,zone){
+  if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));n.paddleLane=zone;
+  if(zone===n.ballLane){n.rally++;n.last="Nice return!";n.ballLane=Math.floor(Math.random()*3)}else{const enemy=myMark==="A"?"B":"A";n.scores[enemy]++;n.rally=0;n.last="Missed — opponent scores";n.ballLane=Math.floor(Math.random()*3);if(n.scores[enemy]>=5)n.winner=enemy}
+  if(botMode){if(!n.winner&&Math.random()<.72){n.rally++;n.last="Computer returned it";n.ballLane=Math.floor(Math.random()*3)}else if(!n.winner){n.scores.A++;n.last="Computer missed — your point";if(n.scores.A>=5)n.winner="A"}renderState(n,uid);if(n.winner)finishLocal(n.winner)}else await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")
+}
 
 // ---------- Air Hockey ----------
-function renderAirHockey(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";["Left","Center","Right"].forEach((x,i)=>{const q=document.createElement("button");q.className="answer-btn";q.textContent=`Shoot ${x}`;q.onclick=()=>airShot(st,turn,i);b.appendChild(q)});setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${canMove(turn)?"Your shot":"Opponent's shot"} • ${st.scores.A}-${st.scores.B} ${st.last||""}`)}
-async function airShot(st,turn,lane){if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const keeper=Math.floor(Math.random()*3);if(lane!==keeper){n.scores[myMark]++;n.last="GOAL!"}else n.last="Saved";n.round++;if(n.scores[myMark]>=5)n.winner=myMark;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function renderAirHockey(st,turn){
+  const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";
+  const rink=document.createElement("div");rink.className="air-rink";rink.innerHTML=`<div class="air-goal top"></div><div class="air-goal bottom"></div><div class="air-puck lane-${st.puckLane||1}"></div><div class="air-striker opponent lane-${st.strikerLane?.B??1}"></div><div class="air-striker player lane-${st.strikerLane?.A??1}"></div>`;b.appendChild(rink);
+  const controls=document.createElement("div");controls.className="lane-controls";[0,1,2].forEach(i=>{const q=document.createElement("button");q.textContent=["Left","Center","Right"][i];q.onclick=()=>{st.strikerLane[myMark]=i;renderAirHockey(st,turn)};controls.appendChild(q)});const shoot=document.createElement("button");shoot.className="primary mini";shoot.textContent="🏒 Shoot";shoot.onclick=()=>airShot(st,turn,st.strikerLane[myMark]);controls.appendChild(shoot);b.appendChild(controls);
+  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.scores[myMark]} • Opponent ${st.scores[myMark==="A"?"B":"A"]} • ${st.last}`)
+}
+async function airShot(st,turn,lane){
+  if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const keeper=Math.floor(Math.random()*3);n.puckLane=lane;if(lane!==keeper){n.scores[myMark]++;n.last="GOAL!"}else n.last="Saved";n.round++;if(n.scores[myMark]>=5)n.winner=myMark;
+  if(botMode&&!n.winner){const botLane=Math.floor(Math.random()*3),block=Math.floor(Math.random()*3);n.strikerLane.B=botLane;if(botLane!==block){n.scores.B++;n.last+=n.last?" • Computer scores":"Computer scores"}else n.last+=n.last?" • You saved it":"You saved it";if(n.scores.B>=5)n.winner="B";renderState(n,uid);if(n.winner)finishLocal(n.winner)}else if(botMode){renderState(n,uid);finishLocal(n.winner)}else await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")
+}
 
 // ---------- Snakes & Ladders ----------
 const SNL={4:14,9:31,20:38,28:84,40:59,51:67,63:81,17:7,54:34,62:19,64:60,87:24,93:73,95:75,99:78};
-function renderSnakesLadders(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";const p=document.createElement("div");p.className="board-status";p.textContent=`You: ${st.pos[myMark]} • Opponent: ${st.pos[myMark==="A"?"B":"A"]}`;b.appendChild(p);const q=document.createElement("button");q.className="primary mini";q.textContent="🎲 Roll Dice";q.onclick=()=>rollSNL(st,turn);b.appendChild(q);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):canMove(turn)?"Your roll":"Opponent's roll")}
-async function rollSNL(st,turn){if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const roll=Math.floor(Math.random()*6)+1;let p=n.pos[myMark]+roll;if(p>100)p=n.pos[myMark];if(SNL[p])p=SNL[p];n.pos[myMark]=p;n.lastRoll=roll;if(p===100)n.winner=myMark;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function renderSnakesLadders(st,turn){
+  const b=$("#gameBoard");b.className="game-board snl-wrap";b.innerHTML="";const board=document.createElement("div");board.className="snl-board";
+  for(let rr=9;rr>=0;rr--){let nums=[...Array(10)].map((_,i)=>rr*10+i+1);if(rr%2===1)nums.reverse();for(const n of nums){const cell=document.createElement("div");cell.className="snl-cell";let tag="";if(SNL[n]>n)tag=`<span class="ladder">🪜${SNL[n]}</span>`;if(SNL[n]<n)tag=`<span class="snake-mark">🐍${SNL[n]}</span>`;let pieces="";if(st.pos.A===n)pieces+='<span class="piece a">●</span>';if(st.pos.B===n)pieces+='<span class="piece b">●</span>';cell.innerHTML=`<small>${n}</small>${tag}<div>${pieces}</div>`;board.appendChild(cell)}}b.appendChild(board);
+  const controls=document.createElement("div");controls.className="snl-controls";const dice=document.createElement("div");dice.className="dice-face";dice.textContent=st.lastRoll?`🎲 ${st.lastRoll}`:"🎲";controls.appendChild(dice);const q=document.createElement("button");q.className="primary mini";q.textContent="Roll Dice";q.disabled=!canMove(turn)||!!st.winner;q.onclick=()=>rollSNL(st,turn);controls.appendChild(q);b.appendChild(controls);
+  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.pos[myMark]} • Opponent ${st.pos[myMark==="A"?"B":"A"]} • ${st.last||"Roll the dice"}`)
+}
+async function rollSNL(st,turn){if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const roll=Math.floor(Math.random()*6)+1;let p=n.pos[myMark]+roll;if(p>100)p=n.pos[myMark];const before=p;if(SNL[p])p=SNL[p];n.pos[myMark]=p;n.lastRoll=roll;n.last=SNL[before]?(SNL[before]>before?`Ladder! ${before} → ${p}`:`Snake! ${before} → ${p}`):`Moved ${roll} squares`;if(p===100)n.winner=myMark;if(botMode&&!n.winner){const br=Math.floor(Math.random()*6)+1;let bp=n.pos.B+br;if(bp>100)bp=n.pos.B;const bb=bp;if(SNL[bp])bp=SNL[bp];n.pos.B=bp;n.last+=` • Computer rolled ${br}`;if(bp===100)n.winner="B";renderState(n,uid);if(n.winner)finishLocal(n.winner)}else if(botMode){renderState(n,uid);finishLocal(n.winner)}else await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
 
 // ---------- Penalty Shootout ----------
-function renderPenalty(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";["Left","Center","Right"].forEach((x,i)=>{const q=document.createElement("button");q.className="answer-btn";q.textContent=`⚽ ${x}`;q.onclick=()=>penaltyKick(st,turn,i);b.appendChild(q)});setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${canMove(turn)?"Take the shot":"Opponent's shot"} • ${st.scores.A}-${st.scores.B} ${st.last||""}`)}
-async function penaltyKick(st,turn,lane){if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const keeper=Math.floor(Math.random()*3);if(lane!==keeper){n.scores[myMark]++;n.last="GOAL!"}else n.last="Saved";n.round++;if(n.round>10||n.scores[myMark]>=5)n.winner=n.scores.A===n.scores.B?null:(n.scores.A>n.scores.B?"A":"B");await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function renderPenalty(st,turn){
+  const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";const goal=document.createElement("div");goal.className="penalty-goal";goal.innerHTML='<div class="keeper">🧤</div><div class="ball">⚽</div>';[0,1,2].forEach(i=>{const z=document.createElement("button");z.className=`goal-zone z${i}`;z.setAttribute("aria-label",["Shoot left","Shoot center","Shoot right"][i]);z.onclick=()=>penaltyKick(st,turn,i);goal.appendChild(z)});b.appendChild(goal);const info=document.createElement("div");info.className="shootout-info";info.textContent=`Shots: You ${st.shots[myMark]||0}/5 • Opponent ${st.shots[myMark==="A"?"B":"A"]||0}/5`;b.appendChild(info);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.scores[myMark]} • Opponent ${st.scores[myMark==="A"?"B":"A"]} • ${st.last}`)
+}
+async function penaltyKick(st,turn,lane){if(!canMove(turn)||st.winner||(st.shots[myMark]||0)>=5)return;const n=JSON.parse(JSON.stringify(st));const keeper=Math.floor(Math.random()*3);n.shots[myMark]=(n.shots[myMark]||0)+1;if(lane!==keeper){n.scores[myMark]++;n.last="GOAL!"}else n.last="SAVED!";
+  if(botMode){if((n.shots.B||0)<5){const botLane=Math.floor(Math.random()*3),youSave=Math.floor(Math.random()*3);n.shots.B++;if(botLane!==youSave)n.scores.B++}if(n.shots.A>=5&&n.shots.B>=5){if(n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";else {n.shots.A=0;n.shots.B=0;n.last="Draw — sudden death"}}renderState(n,uid);if(n.winner)finishLocal(n.winner);return}
+  if((n.shots.A||0)>=5&&(n.shots.B||0)>=5&&n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
 
 // ---------- Reaction Tap ----------
-function renderReaction(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";const q=document.createElement("button");q.className="reaction-btn";const ready=Date.now()>=st.readyAt;q.textContent=ready?"TAP!":"WAIT…";q.disabled=!canMove(turn);q.onclick=()=>reactionTap(st,turn);b.appendChild(q);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${st.scores.A}-${st.scores.B}`);if(!ready)setTimeout(()=>renderState(st,turn),Math.max(50,st.readyAt-Date.now()+20))}
-async function reactionTap(st,turn){if(!canMove(turn)||st.winner)return;let n=JSON.parse(JSON.stringify(st));if(Date.now()<n.readyAt){n.scores[myMark==="A"?"B":"A"]++;n.last="Too early"}else{n.scores[myMark]++;n.last="Point"}if(n.scores.A>=5||n.scores.B>=5)n.winner=n.scores.A>n.scores.B?"A":"B";n.round++;n.readyAt=Date.now()+1200+Math.floor(Math.random()*2200);await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+let reactionTimer=null,reactionCountdownTimer=null;
+function clearReactionTimers(){if(reactionTimer){clearTimeout(reactionTimer);reactionTimer=null}if(reactionCountdownTimer){clearInterval(reactionCountdownTimer);reactionCountdownTimer=null}}
+function reactionAvg(a=[]){if(!a.length)return 0;return Math.round(a.reduce((x,y)=>x+y,0)/a.length)}
+function renderReaction(st,turn){
+  const b=$("#gameBoard");b.className="game-board reaction-wrap";b.innerHTML="";const q=document.createElement("button");q.className=`reaction-btn phase-${st.phase}`;q.disabled=!!st.winner;q.textContent=st.phase==="countdown"?String(st.countdown||3):st.phase==="wait"?"WAIT…":st.phase==="go"?"GO!":"NEXT";q.onclick=()=>reactionTap(st,turn);b.appendChild(q);const stats=document.createElement("div");stats.className="reaction-stats";stats.textContent=`You ${st.scores[myMark]} • Opponent ${st.scores[myMark==="A"?"B":"A"]} • Avg ${reactionAvg(st.times?.[myMark])||"—"} ms`;b.appendChild(stats);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):(st.last||"Get ready"));if(botMode&&!reactionTimer&&!st.winner&&st.phase==="countdown")startReactionRound(st)
+}
+function startReactionRound(st){clearReactionTimers();let live=st;live.phase="countdown";live.countdown=3;renderReactionFrame(live);reactionCountdownTimer=setInterval(()=>{live.countdown--;if(live.countdown>0)renderReactionFrame(live);else{clearInterval(reactionCountdownTimer);reactionCountdownTimer=null;live.phase="wait";renderReactionFrame(live);const delay=900+Math.floor(Math.random()*2200);reactionTimer=setTimeout(()=>{reactionTimer=null;live.phase="go";live.goAt=performance.now();renderReactionFrame(live);if(botMode){const botTime=220+Math.floor(Math.random()*360);setTimeout(()=>{if(live.phase!=="go")return;live.times.B.push(botTime);live.scores.B++;live.last=`Computer: ${botTime} ms`;reactionFinishPoint(live)},botTime)}},delay)}},700)}
+function renderReactionFrame(st){const btn=document.querySelector(".reaction-btn");if(!btn)return;btn.className=`reaction-btn phase-${st.phase}`;btn.textContent=st.phase==="countdown"?String(st.countdown):st.phase==="wait"?"WAIT…":"GO!";const ss=document.querySelector(".reaction-stats");if(ss)ss.textContent=`You ${st.scores.A} • Computer ${st.scores.B} • Avg ${reactionAvg(st.times.A)||"—"} ms`;setStatus(st.last||"Get ready")}
+function reactionTap(st,turn){if(st.winner)return;if(!botMode&&!canMove(turn))return;if(st.phase!=="go"){if(st.phase==="wait"){const n=JSON.parse(JSON.stringify(st));const enemy=myMark==="A"?"B":"A";n.scores[enemy]++;n.last="False start — opponent gets the point";reactionFinishPoint(n)}return}const n=JSON.parse(JSON.stringify(st));const ms=Math.max(1,Math.round(performance.now()-st.goAt));n.times[myMark].push(ms);n.scores[myMark]++;n.last=`Your reaction: ${ms} ms`;clearReactionTimers();reactionFinishPoint(n)}
+function reactionFinishPoint(n){clearReactionTimers();if(n.scores.A>=5||n.scores.B>=5){n.winner=n.scores.A>n.scores.B?"A":"B";renderReaction(n,uid);finishLocal(n.winner);return}n.round++;n.phase="countdown";n.countdown=3;if(botMode){setTimeout(()=>startReactionRound(n),700)}else writeState(n,nextUid(),"playing")}
 
 // ---------- Puzzle Race ----------
 function renderPuzzle(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";const board=st.boards[myMark];const g=document.createElement("div");g.className="puzzle-grid";board.forEach((v,i)=>{const q=document.createElement("button");q.className="puzzle-cell";q.textContent=v||"";q.onclick=()=>puzzleMove(st,i);g.appendChild(q)});b.appendChild(g);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`Moves: ${st.moves[myMark]||0}`)}
@@ -1172,16 +1633,75 @@ function botMove(state){
     if(!reversiMoves(n.cells,"A").length&&!reversiMoves(n.cells,"B").length)n.winner=reversiWinner(n.cells);renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
   }
   if(currentGame.id==="gomoku"){
-    const n=JSON.parse(JSON.stringify(state)),ids=n.cells.map((x,i)=>!x?i:-1).filter(i=>i>=0);if(!ids.length){done();return}let pool=ids.filter(i=>{const r=Math.floor(i/15),c=i%15;return n.cells.some((x,j)=>x&&Math.abs(Math.floor(j/15)-r)<=2&&Math.abs(j%15-c)<=2)});if(!pool.length)pool=ids;const i=pool[Math.floor(Math.random()*pool.length)];n.cells[i]="B";n.winner=gomokuWinner(n.cells);renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
+    const n=JSON.parse(JSON.stringify(state));
+    const i=gomokuBestBotMove(n.cells);
+    if(i===null){done();return}
+    n.cells[i]="B";
+    n.winner=gomokuWinner(n.cells);
+    renderState(n,uid);
+    done();
+    if(n.winner)finishLocal(n.winner);
+    return;
   }
   if(currentGame.id==="battle2048"){
     const n=JSON.parse(JSON.stringify(state));const dirs=shuffle(["up","down","left","right"]);let moved=false;for(const d of dirs){const r=slide2048(n.boards.B,d);if(r.changed){n.boards.B=r.board;n.scores.B+=r.gained;n.moves.B++;moved=true;break}}if((n.moves.A||0)>=25&&(n.moves.B||0)>=25)n.winner=n.scores.A===n.scores.B?"draw":n.scores.A>n.scores.B?"A":"B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
   }
   if(currentGame.id==="hangman"){
-    const n=JSON.parse(JSON.stringify(state));const letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").filter(x=>!n.guessed.includes(x));if(!letters.length){done();return}const ch=letters[Math.floor(Math.random()*letters.length)];n.guessed.push(ch);if(!n.word.includes(ch))n.wrong.B=(n.wrong.B||0)+1;if(n.word.split("").every(x=>n.guessed.includes(x)))n.winner="B";else if(n.wrong.B>=6)n.winner="A";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
+    const n=JSON.parse(JSON.stringify(state));
+
+    if(n.mode==="player" && n.phase==="setup"){
+      // Human supplies the word in this mode.
+      renderState(n,uid);
+      done();
+      return;
+    }
+
+    if(!n.word){
+      done();
+      return;
+    }
+
+    const commonOrder="ETAOINSHRDLUCMFPGWYBVKXJQZ".split("");
+    const available=commonOrder.filter(x=>!n.guessed.includes(x));
+    if(!available.length){done();return}
+
+    // Mostly human-like frequency guessing, with a little randomness.
+    let ch;
+    if(Math.random()<0.78){
+      ch=available[0];
+    }else{
+      ch=available[Math.floor(Math.random()*Math.min(8,available.length))];
+    }
+
+    n.guessed.push(ch);
+
+    const botMark="B";
+    if(!n.word.includes(ch)){
+      n.wrong[botMark]=(n.wrong[botMark]||0)+1;
+    }
+
+    if(n.word.split("").every(x=>n.guessed.includes(x))){
+      n.winner="B";
+    }else if((n.wrong[botMark]||0)>=8){
+      n.winner="A";
+    }
+
+    renderState(n,uid);
+    done();
+
+    if(n.winner){
+      finishLocal(n.winner);
+      return;
+    }
+
+    // In player-secret mode, computer keeps guessing until round ends.
+    if(n.mode==="player"){
+      setTimeout(()=>botMove(n),650);
+    }
+    return;
   }
   if(currentGame.id==="quiz"){
-    const n=JSON.parse(JSON.stringify(state)),q=QUIZ_BANK[n.index%QUIZ_BANK.length];if(Math.random()<0.65)n.scores.B++;n.index++;if(n.scores.B>=5)n.winner="B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
+    const n=JSON.parse(JSON.stringify(state)),q=QUIZ_BANK[n.index%QUIZ_BANK.length];if(Math.random()<0.65)n.scores.B++;n.index=(n.index+17)%QUIZ_BANK.length;if(n.scores.B>=5)n.winner="B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
   }
   if(currentGame.id==="math"){
     const n=JSON.parse(JSON.stringify(state));if(Math.random()<0.7)n.scores.B++;const ns=makeMathState();ns.scores=n.scores;ns.round=(n.round||1)+1;if(ns.scores.B>=5)ns.winner="B";renderState(ns,uid);done();if(ns.winner)finishLocal(ns.winner);return;
@@ -1189,21 +1709,11 @@ function botMove(state){
   if(currentGame.id==="numberguess"){
     const n=JSON.parse(JSON.stringify(state));const guess=Math.floor(Math.random()*100)+1;if(guess===n.target)n.winner="B";else n.hint=guess<n.target?`Higher than ${guess}`:`Lower than ${guess}`;renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
   }
-  if(currentGame.id==="snake"){
-    const n=JSON.parse(JSON.stringify(state)),dirs=["up","down","left","right"],d=dirs[Math.floor(Math.random()*4)];let p=n.heads.B,r=Math.floor(p/10),c=p%10;if(d==="up")r=(r+9)%10;if(d==="down")r=(r+1)%10;if(d==="left")c=(c+9)%10;if(d==="right")c=(c+1)%10;p=r*10+c;n.heads.B=p;n.turns++;if(p===n.food){n.scores.B++;n.food=Math.floor(Math.random()*100)}if(n.heads.A===n.heads.B||n.scores.B>=5)n.winner="B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
-  }
-  if(currentGame.id==="pong"){
-    const n=JSON.parse(JSON.stringify(state));const zone=Math.floor(Math.random()*3);if(zone===n.ball){n.rally++;n.ball=Math.floor(Math.random()*3)}else{n.scores.A++;n.rally=0;n.ball=Math.floor(Math.random()*3);if(n.scores.A>=5)n.winner="A"}renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
-  }
-  if(currentGame.id==="airhockey"||currentGame.id==="penalty"){
-    const n=JSON.parse(JSON.stringify(state));const scored=Math.random()<0.55;if(scored)n.scores.B++;n.last=scored?"Opponent scored":"Opponent missed";n.round++;if(n.scores.B>=5)n.winner="B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
-  }
-  if(currentGame.id==="snakesladders"){
-    const n=JSON.parse(JSON.stringify(state)),roll=Math.floor(Math.random()*6)+1;let p=n.pos.B+roll;if(p>100)p=n.pos.B;if(SNL[p])p=SNL[p];n.pos.B=p;if(p===100)n.winner="B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
-  }
-  if(currentGame.id==="reaction"){
-    const n=JSON.parse(JSON.stringify(state));if(Math.random()<0.6)n.scores.B++;else n.scores.A++;if(n.scores.A>=5||n.scores.B>=5)n.winner=n.scores.A>n.scores.B?"A":"B";n.readyAt=Date.now()+1200+Math.floor(Math.random()*2200);renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
-  }
+  if(currentGame.id==="snake"){done();return;}
+  if(currentGame.id==="pong"){done();return;}
+  if(currentGame.id==="airhockey"||currentGame.id==="penalty"){done();return;}
+  if(currentGame.id==="snakesladders"){done();return;}
+  if(currentGame.id==="reaction"){done();return;}
   if(currentGame.id==="puzzle"){
     const n=JSON.parse(JSON.stringify(state)),a=n.boards.B,z=a.indexOf(0),r=Math.floor(z/3),c=z%3,m=[];[[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr,dc])=>{const rr=r+dr,cc=c+dc;if(rr>=0&&rr<3&&cc>=0&&cc<3)m.push(rr*3+cc)});const i=m[Math.floor(Math.random()*m.length)];[a[i],a[z]]=[a[z],a[i]];n.moves.B=(n.moves.B||0)+1;if(isPuzzleSolved(a))n.winner="B";renderState(n,uid);done();if(n.winner)finishLocal(n.winner);return;
   }
@@ -1227,6 +1737,8 @@ function finishLocal(winner){
 $("#leaveBtn").onclick=leaveRoom;
 async function leaveRoom(){
   clearAutoRematch();
+  clearSnakeTimer();
+  clearReactionTimers();
   clearCheckersPlan();
   stopVoice(); if(roomUnsub){roomUnsub();roomUnsub=null;}
   if(!botMode&&roomId) await update(roomRef(),{status:"finished"}).catch(()=>{});
