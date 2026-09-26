@@ -321,52 +321,85 @@ function renderConnect4(s,turn){
   const b=$("#gameBoard");
   b.className="game-board connect4-wrap";
   b.innerHTML="";
-  setStatus(s.winner?(s.winner===myMark?"You win!":"Opponent wins"):canMove(turn)?"Tap a column ↓":"Opponent's turn");
+
+  if(s.winner==="draw") setStatus("Draw");
+  else if(s.winner) setStatus(s.winner===myMark?"You win!":"Opponent wins");
+  else setStatus(canMove(turn)?"Tap a column ↓":"Opponent's turn");
 
   const controls=document.createElement("div");
   controls.className="c4-controls";
+
   for(let col=0;col<7;col++){
+    const full=Boolean(s.cells[col]);
     const btn=document.createElement("button");
     btn.className="c4-drop";
-    btn.textContent="↓";
-    btn.setAttribute("aria-label",`Drop in column ${col+1}`);
+    btn.textContent=full?"×":"↓";
+    btn.disabled=full || !canMove(turn) || Boolean(s.winner);
+    btn.setAttribute("aria-label",full?`Column ${col+1} is full`:`Drop in column ${col+1}`);
     btn.onclick=()=>c4Move(s,turn,col);
     controls.appendChild(btn);
   }
   b.appendChild(controls);
 
   const grid=document.createElement("div");
-  grid.className="board-7";
+  grid.className="board-7 c4-grid";
+
   s.cells.forEach((v,i)=>{
     const c=document.createElement("button");
-    c.className="cell";
+    c.className="cell c4-cell";
     c.textContent=v==="A"?"🔴":v==="B"?"🟡":"";
     const col=i%7;
+    c.dataset.col=String(col);
+    c.disabled=!canMove(turn) || Boolean(s.winner) || Boolean(s.cells[col]);
+    c.setAttribute("aria-label",`Column ${col+1}`);
     c.onclick=()=>c4Move(s,turn,col);
     grid.appendChild(c);
   });
+
   b.appendChild(grid);
 }
+
 async function c4Move(s,turn,col){
   if(s.winner||!canMove(turn))return;
+  if(col<0||col>6||s.cells[col])return;
+
   let row=-1;
-  for(let r=5;r>=0;r--)if(!s.cells[r*7+col]){row=r;break}
+  for(let r=5;r>=0;r--){
+    if(!s.cells[r*7+col]){
+      row=r;
+      break;
+    }
+  }
   if(row<0)return;
+
   const n={...s,cells:[...s.cells]};
   n.cells[row*7+col]=myMark;
   n.winner=c4Winner(n.cells);
-  await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+
+  await writeState(
+    n,
+    n.winner?uid:nextUid(),
+    n.winner?"finished":"playing"
+  );
 }
+
 function c4Winner(c){
-  for(let r=0;r<6;r++)for(let col=0;col<7;col++){
-    const m=c[r*7+col];if(!m)continue;
-    for(const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]){
-      let ok=true;
-      for(let k=1;k<4;k++){
-        const rr=r+dr*k,cc=col+dc*k;
-        if(rr<0||rr>5||cc<0||cc>6||c[rr*7+cc]!==m)ok=false;
+  for(let r=0;r<6;r++){
+    for(let col=0;col<7;col++){
+      const m=c[r*7+col];
+      if(!m)continue;
+
+      for(const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]){
+        let ok=true;
+        for(let k=1;k<4;k++){
+          const rr=r+dr*k, cc=col+dc*k;
+          if(rr<0||rr>5||cc<0||cc>6||c[rr*7+cc]!==m){
+            ok=false;
+            break;
+          }
+        }
+        if(ok)return m;
       }
-      if(ok)return m;
     }
   }
   return c.every(Boolean)?"draw":null;
@@ -828,12 +861,27 @@ function botMove(state){
     n.scores={A:0,B:0,...(n.scores||{})};n.open=[];
     const available=n.cards.map((_,i)=>!n.matched.includes(i)?i:-1).filter(i=>i>=0);
     if(available.length<2){done();return}
-    // Computer sometimes remembers a visible pair, otherwise random.
+    // Fair computer: usually chooses two random hidden cards.
+    // Only occasionally (15%) makes a "smart" matching choice.
     let first=available[Math.floor(Math.random()*available.length)];
     let second=null;
-    for(let a=0;a<available.length&&second===null;a++)
-      for(let b=a+1;b<available.length;b++)
-        if(n.cards[available[a]]===n.cards[available[b]]&&Math.random()<0.45){first=available[a];second=available[b];break}
+
+    if(Math.random()<0.15){
+      const pairs=[];
+      for(let a=0;a<available.length;a++){
+        for(let b=a+1;b<available.length;b++){
+          if(n.cards[available[a]]===n.cards[available[b]]){
+            pairs.push([available[a],available[b]]);
+          }
+        }
+      }
+      if(pairs.length){
+        const pair=pairs[Math.floor(Math.random()*pairs.length)];
+        first=pair[0];
+        second=pair[1];
+      }
+    }
+
     if(second===null){
       const rest=available.filter(i=>i!==first);
       second=rest[Math.floor(Math.random()*rest.length)];
@@ -1003,16 +1051,29 @@ $("#micBtn").onclick=async()=>{
 };
 async function startMic(){
   try{
-    micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    micStream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+    });
+    const track=micStream.getAudioTracks()[0];
+    if(track)track.enabled=true;
     $("#micBtn").textContent="🎤 Mic On";
-    if(pc) micStream.getTracks().forEach(t=>pc.addTrack(t,micStream));
-  }catch(e){setStatus("Microphone permission was not granted.");}
+    if(pc)micStream.getTracks().forEach(t=>pc.addTrack(t,micStream));
+  }catch(e){
+    micStream=null;
+    $("#micBtn").textContent="🔇 Mic Off";
+    setStatus("Microphone permission was not granted.");
+  }
 }
 async function setupVoice(){
-  if(botMode)return;
-  await startMic();
+  if(botMode){
+    $("#micBtn").textContent="🔇 Mic Off";
+    return;
+  }
+
+  // Microphone is OFF by default. Do not request permission or capture audio
+  // until the player explicitly taps the mic button.
+  $("#micBtn").textContent="🔇 Mic Off";
   pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-  if(micStream)micStream.getTracks().forEach(t=>pc.addTrack(t,micStream));
   pc.ontrack=e=>$("#remoteAudio").srcObject=e.streams[0];
   pc.onicecandidate=e=>{if(e.candidate)push(roomRef(`voice/candidates/${uid}`),e.candidate.toJSON())};
   onValue(roomRef(`voice/candidates/${opponent.uid}`),snap=>snap.forEach(x=>pc.addIceCandidate(x.val()).catch(()=>{})));
@@ -1024,6 +1085,16 @@ async function setupVoice(){
     onValue(roomRef("voice/offer"),async s=>{if(!s.exists()||pc.currentRemoteDescription)return;await pc.setRemoteDescription(s.val());const ans=await pc.createAnswer();await pc.setLocalDescription(ans);await set(roomRef("voice/answer"),ans)});
   }
 }
-function stopVoice(){if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}if(pc){pc.close();pc=null}}
+function stopVoice(){
+  if(micStream){
+    micStream.getTracks().forEach(t=>t.stop());
+    micStream=null;
+  }
+  if(pc){
+    pc.close();
+    pc=null;
+  }
+  $("#micBtn").textContent="🔇 Mic Off";
+}
 
 window.addEventListener("beforeunload",()=>{ if(currentGame&&uid) remove(ref(db,`queues/${currentGame.id}/${uid}`)).catch(()=>{}); });
