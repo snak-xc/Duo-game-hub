@@ -176,3 +176,45 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
  .gomoku-board{grid-template-columns:repeat(15,21px)}.gomoku-board .cell{width:21px;height:21px}
  .letter-grid{grid-template-columns:repeat(6,42px)}
 }
+
+/* v13 Hangman modes */
+.hangman-info{
+  font-size:.95rem;
+  color:#aeb8d8;
+  text-align:center;
+  margin-bottom:4px;
+}
+
+
+/* v15 responsive lobby stats */
+.overall-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 20px;max-width:100%}
+.overall-stats .player-chip{min-width:0;padding:10px 6px}
+.overall-stats .player-chip span{font-size:.78rem;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:430px){.overall-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v15 Snake */
+.snake-duel-wrap{display:flex!important;flex-direction:column;align-items:center;gap:12px}
+.snake-live{grid-template-columns:repeat(10,28px)}
+.snake-cell.snake-a{background:#4ade80}.snake-cell.snake-b{background:#a78bfa}
+.snake-controls{display:grid;grid-template-columns:repeat(4,54px);gap:8px}.snake-controls button{font-size:1.4rem}
+
+/* v15 sports */
+.sports-wrap{display:flex!important;flex-direction:column;align-items:center;gap:12px;width:100%}
+.pong-court,.air-rink{position:relative;width:min(92vw,360px);height:300px;border:2px solid #7380aa;border-radius:18px;background:#0d1527;overflow:hidden}
+.pong-court:after,.air-rink:after{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px dashed #586486}
+.pong-score{position:absolute;top:44%;left:0;right:0;text-align:center;font-weight:900}
+.pong-ball{position:absolute;width:22px;height:22px;border-radius:50%;background:#fff;top:48%}.pong-ball.lane-0{left:16%}.pong-ball.lane-1{left:47%}.pong-ball.lane-2{left:78%}
+.pong-player-paddle,.pong-op-paddle{position:absolute;width:86px;height:12px;border-radius:12px;background:#69d9ff}.pong-player-paddle{bottom:12px}.pong-op-paddle{top:12px;left:37%;background:#c084fc}.pong-player-paddle.lane-0{left:5%}.pong-player-paddle.lane-1{left:37%}.pong-player-paddle.lane-2{left:69%}
+.lane-controls{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.lane-controls button{min-width:90px}
+.air-goal{position:absolute;width:120px;height:14px;left:calc(50% - 60px);border:2px solid #fff}.air-goal.top{top:0}.air-goal.bottom{bottom:0}
+.air-puck,.air-striker{position:absolute;border-radius:50%;transform:translateX(-50%)}.air-puck{width:24px;height:24px;background:#fff;top:48%}.air-striker{width:48px;height:48px;background:#5eead4}.air-striker.player{bottom:24px}.air-striker.opponent{top:24px;background:#c084fc}.air-puck.lane-0,.air-striker.lane-0{left:18%}.air-puck.lane-1,.air-striker.lane-1{left:50%}.air-puck.lane-2,.air-striker.lane-2{left:82%}
+
+/* v15 Snakes & Ladders */
+.snl-wrap{display:flex!important;flex-direction:column;align-items:center;gap:12px;width:100%}.snl-board{display:grid;grid-template-columns:repeat(10,31px);gap:2px}.snl-cell{width:31px;height:31px;background:#16213a;border:1px solid #2d3b60;border-radius:4px;position:relative;padding:2px;font-size:.55rem}.snl-cell small{position:absolute;top:1px;left:2px;color:#9ba8c9}.snl-cell .ladder,.snl-cell .snake-mark{position:absolute;right:1px;top:1px;font-size:.5rem}.snl-cell .piece{font-size:.9rem;margin:8px 1px 0;display:inline-block}.piece.a{color:#52e29a}.piece.b{color:#b78cff}.snl-controls{display:flex;align-items:center;gap:12px}.dice-face{font-size:1.5rem;min-width:54px;text-align:center}
+
+/* v15 Penalty */
+.penalty-goal{position:relative;width:min(92vw,360px);height:220px;border:6px solid #e7ebff;border-bottom-width:4px;background:linear-gradient(#182b48,#0c1629);overflow:hidden}.goal-zone{position:absolute;top:0;bottom:0;width:33.333%;background:transparent;border:0}.goal-zone.z0{left:0}.goal-zone.z1{left:33.333%}.goal-zone.z2{left:66.666%}.keeper{position:absolute;left:46%;bottom:18px;font-size:2.2rem}.ball{position:absolute;left:47%;bottom:2px;font-size:2rem}.shootout-info{font-weight:700;text-align:center}
+
+/* v15 Reaction */
+.reaction-wrap{display:flex!important;flex-direction:column;align-items:center;gap:12px}.reaction-btn{width:min(88vw,360px);height:180px;font-size:2.5rem;font-weight:900}.reaction-btn.phase-countdown{background:#27324f}.reaction-btn.phase-wait{background:#7c2d12}.reaction-btn.phase-go{background:#166534}.reaction-stats{font-weight:700;text-align:center;color:#cdd5ef}
+@media(max-width:380px){.snl-board{grid-template-columns:repeat(10,28px)}.snl-cell{width:28px;height:28px}.snake-live{grid-template-columns:repeat(10,25px)}.snake-live .snake-cell{width:25px;height:25px}}
