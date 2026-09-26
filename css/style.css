@@ -128,3 +128,23 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
   font-size:1rem;
   font-weight:900;
 }
+
+/* v8 Connect Four layout/touch fix */
+.connect4-wrap .c4-grid{
+  display:grid !important;
+  grid-template-columns:repeat(7,48px);
+  gap:8px;
+  justify-content:center;
+}
+.connect4-wrap .c4-cell{
+  touch-action:manipulation;
+}
+.connect4-wrap .c4-drop:disabled,
+.connect4-wrap .c4-cell:disabled{
+  cursor:default;
+}
+@media(max-width:520px){
+  .connect4-wrap .c4-grid{
+    grid-template-columns:repeat(7,40px);
+  }
+}
