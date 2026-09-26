@@ -318,92 +318,12 @@ async function tttMove(s,turn,i){if(s.cells[i]||s.winner||!canMove(turn))return;
 function tttWinner(c){const L=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];for(const l of L)if(c[l[0]]&&c[l[0]]===c[l[1]]&&c[l[1]]===c[l[2]])return c[l[0]];return c.every(Boolean)?"draw":null}
 
 function renderConnect4(s,turn){
-  const b=$("#gameBoard");
-  b.className="game-board connect4-wrap";
-  b.innerHTML="";
-
-  if(s.winner==="draw") setStatus("Draw");
-  else if(s.winner) setStatus(s.winner===myMark?"You win!":"Opponent wins");
-  else setStatus(canMove(turn)?"Tap a column ↓":"Opponent's turn");
-
-  const controls=document.createElement("div");
-  controls.className="c4-controls";
-
-  for(let col=0;col<7;col++){
-    const full=Boolean(s.cells[col]);
-    const btn=document.createElement("button");
-    btn.className="c4-drop";
-    btn.textContent=full?"×":"↓";
-    btn.disabled=full || !canMove(turn) || Boolean(s.winner);
-    btn.setAttribute("aria-label",full?`Column ${col+1} is full`:`Drop in column ${col+1}`);
-    btn.onclick=()=>c4Move(s,turn,col);
-    controls.appendChild(btn);
-  }
-  b.appendChild(controls);
-
-  const grid=document.createElement("div");
-  grid.className="board-7 c4-grid";
-
-  s.cells.forEach((v,i)=>{
-    const c=document.createElement("button");
-    c.className="cell c4-cell";
-    c.textContent=v==="A"?"🔴":v==="B"?"🟡":"";
-    const col=i%7;
-    c.dataset.col=String(col);
-    c.disabled=!canMove(turn) || Boolean(s.winner) || Boolean(s.cells[col]);
-    c.setAttribute("aria-label",`Column ${col+1}`);
-    c.onclick=()=>c4Move(s,turn,col);
-    grid.appendChild(c);
-  });
-
-  b.appendChild(grid);
+  const b=$("#gameBoard");b.className="game-board board-7";b.innerHTML="";
+  setStatus(s.winner?(s.winner===myMark?"You win!":"Opponent wins"):canMove(turn)?"Your turn":"Opponent's turn");
+  s.cells.forEach((v,i)=>{const c=document.createElement("button");c.className="cell";c.textContent=v==="A"?"🔴":v==="B"?"🟡":"";c.onclick=()=>c4Move(s,turn,i%7);b.appendChild(c)});
 }
-
-async function c4Move(s,turn,col){
-  if(s.winner||!canMove(turn))return;
-  if(col<0||col>6||s.cells[col])return;
-
-  let row=-1;
-  for(let r=5;r>=0;r--){
-    if(!s.cells[r*7+col]){
-      row=r;
-      break;
-    }
-  }
-  if(row<0)return;
-
-  const n={...s,cells:[...s.cells]};
-  n.cells[row*7+col]=myMark;
-  n.winner=c4Winner(n.cells);
-
-  await writeState(
-    n,
-    n.winner?uid:nextUid(),
-    n.winner?"finished":"playing"
-  );
-}
-
-function c4Winner(c){
-  for(let r=0;r<6;r++){
-    for(let col=0;col<7;col++){
-      const m=c[r*7+col];
-      if(!m)continue;
-
-      for(const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]){
-        let ok=true;
-        for(let k=1;k<4;k++){
-          const rr=r+dr*k, cc=col+dc*k;
-          if(rr<0||rr>5||cc<0||cc>6||c[rr*7+cc]!==m){
-            ok=false;
-            break;
-          }
-        }
-        if(ok)return m;
-      }
-    }
-  }
-  return c.every(Boolean)?"draw":null;
-}
+async function c4Move(s,turn,col){if(s.winner||!canMove(turn))return;let row=-1;for(let r=5;r>=0;r--)if(!s.cells[r*7+col]){row=r;break}if(row<0)return;const n={...s,cells:[...s.cells]};n.cells[row*7+col]=myMark;n.winner=c4Winner(n.cells);await writeState(n,nextUid(),n.winner?"finished":"playing")}
+function c4Winner(c){for(let r=0;r<6;r++)for(let col=0;col<7;col++){const m=c[r*7+col];if(!m)continue;for(const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]){let ok=true;for(let k=1;k<4;k++){const rr=r+dr*k,cc=col+dc*k;if(rr<0||rr>5||cc<0||cc>6||c[rr*7+cc]!==m)ok=false}if(ok)return m}}return null}
 
 function renderRPS(s){
   const b=$("#gameBoard");
