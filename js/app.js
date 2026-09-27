@@ -1595,40 +1595,145 @@ async function rollSNL(st,turn){
 
 // ---------- Penalty Shootout ----------
 let penaltyBusy=false,penaltyLocal=null;
-function renderPenalty(st,turn){
-  const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";
-  if(botMode&&!penaltyLocal)penaltyLocal=JSON.parse(JSON.stringify(st));
-  const live=botMode?penaltyLocal:st;
-  const goal=document.createElement("div");goal.className="penalty-goal penalty-live";goal.innerHTML='<div class="keeper" id="penKeeper">🧤</div><div class="ball" id="penBall">⚽</div>';
-  [0,1,2].forEach(i=>{const z=document.createElement("button");z.className=`goal-zone z${i}`;z.disabled=penaltyBusy||!!live.winner;z.setAttribute("aria-label",["Shoot left","Shoot center","Shoot right"][i]);z.onclick=()=>penaltyKick(live,turn,i);goal.appendChild(z)});
-  b.appendChild(goal);
-  const info=document.createElement("div");info.className="shootout-info";info.textContent=`You ${live.scores.A} (${live.shots.A}/5) • Computer ${live.scores.B} (${live.shots.B}/5)`;b.appendChild(info);
-  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):(live.last||"Tap a goal area to shoot"));
+const PK_TARGETS=[
+  {x:18,y:22,label:"Top left"},
+  {x:18,y:70,label:"Bottom left"},
+  {x:50,y:48,label:"Center"},
+  {x:82,y:22,label:"Top right"},
+  {x:82,y:70,label:"Bottom right"}
+];
+
+function penaltyEnsure(st){
+  const n=st;
+  if(!n.phase)n.phase="shoot";
+  if(typeof n.botTarget!=="number")n.botTarget=-1;
+  if(!n.results)n.results={A:[],B:[]};
+  return n;
 }
-function animatePenalty(lane,keeperLane,reverse=false){
-  const ball=document.querySelector("#penBall"),keeper=document.querySelector("#penKeeper");if(!ball||!keeper)return;
-  const x=[-105,0,105][lane],kx=[-85,0,85][keeperLane];
-  keeper.style.transform=`translateX(${kx}px)`;
-  ball.style.transform=reverse?`translate(${x}px,120px) scale(.65)`:`translate(${x}px,-145px) scale(.65)`;
-}
-async function penaltyKick(st,turn,lane){
-  if(penaltyBusy||st.winner||(!botMode&&!canMove(turn)))return;penaltyBusy=true;
-  if(botMode){
-    const n=penaltyLocal||JSON.parse(JSON.stringify(st));
-    const keeper=Math.floor(Math.random()*3);animatePenalty(lane,keeper,false);await sleep(850);
-    n.shots.A++;if(lane!==keeper){n.scores.A++;n.last="GOAL!"}else n.last="SAVED!";
-    penaltyLocal=n;renderPenalty(n,uid);await sleep(700);
-    if(n.shots.A>=5&&n.shots.B>=5&&n.scores.A!==n.scores.B){n.winner=n.scores.A>n.scores.B?"A":"B"}
-    if(!n.winner&&n.shots.B<5){
-      setStatus("Computer is taking the shot…");await sleep(550);
-      const botLane=Math.floor(Math.random()*3),youDive=Math.floor(Math.random()*3);animatePenalty(botLane,youDive,true);await sleep(850);
-      n.shots.B++;if(botLane!==youDive){n.scores.B++;n.last="Computer scores"}else n.last="You saved it!";
-    }
-    if(n.shots.A>=5&&n.shots.B>=5){if(n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";else{n.shots={A:0,B:0};n.last="Draw — sudden death"}}
-    penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);if(n.winner)finishLocal(n.winner);return;
+function penaltyDots(arr,count){
+  let html="";
+  const total=Math.max(5,count,arr.length);
+  for(let i=0;i<total;i++){
+    const v=arr[i];
+    html+=`<span class="pk-dot ${v==="goal"?"goal":v==="save"?"save":""}">${v==="goal"?"●":v==="save"?"×":"○"}</span>`;
   }
-  penaltyBusy=false;
+  return html;
 }
+function renderPenalty(st,turn){
+  const b=$("#gameBoard");b.className="game-board penalty-stage";b.innerHTML="";
+  if(botMode&&!penaltyLocal)penaltyLocal=penaltyEnsure(JSON.parse(JSON.stringify(st)));
+  const live=penaltyEnsure(botMode?penaltyLocal:st);
+
+  const top=document.createElement("div");top.className="pk-top";
+  top.innerHTML=`
+    <div class="pk-mode">${live.phase==="defend"?"🧤 DEFEND":"⚽ SHOOT"}</div>
+    <div class="pk-scoreline"><b>You ${live.scores.A}</b><span>–</span><b>${live.scores.B} Computer</b></div>
+    <div class="pk-round">Shots: ${live.shots.A} / ${live.shots.B}</div>
+  `;
+  b.appendChild(top);
+
+  const goal=document.createElement("div");goal.className=`pk-goal ${live.phase}`;
+  goal.innerHTML=`
+    <div class="pk-net"></div>
+    <div class="pk-keeper" id="pkKeeper">
+      <span class="pk-head"></span><span class="pk-body"></span><span class="pk-arm left"></span><span class="pk-arm right"></span>
+    </div>
+    <div class="pk-ball" id="pkBall">⚽</div>
+    <div class="pk-result" id="pkResult"></div>
+  `;
+
+  PK_TARGETS.forEach((t,i)=>{
+    const z=document.createElement("button");
+    z.className=`pk-target t${i}`;
+    z.style.left=`${t.x}%`; z.style.top=`${t.y}%`;
+    z.disabled=penaltyBusy||!!live.winner;
+    z.setAttribute("aria-label",live.phase==="defend"?`Dive ${t.label}`:`Shoot ${t.label}`);
+    z.innerHTML=`<span>${live.phase==="defend"?"🧤":"＋"}</span>`;
+    z.onclick=()=>live.phase==="defend"?penaltyDefend(live,i):penaltyShoot(live,i);
+    goal.appendChild(z);
+  });
+  b.appendChild(goal);
+
+  const panel=document.createElement("div");panel.className="pk-panel";
+  panel.innerHTML=`
+    <div><span>You</span><div class="pk-dots">${penaltyDots(live.results.A,live.shots.A)}</div></div>
+    <div><span>Computer</span><div class="pk-dots">${penaltyDots(live.results.B,live.shots.B)}</div></div>
+  `;
+  b.appendChild(panel);
+
+  const hint=document.createElement("div");hint.className="pk-hint";
+  hint.textContent=live.winner
+    ? (live.winner==="A"?"You win the shootout!":"Computer wins the shootout")
+    : live.phase==="defend"
+      ? "Computer is shooting — tap where you want the goalkeeper to dive"
+      : "Tap one of the 5 target points to shoot";
+  b.appendChild(hint);
+  setStatus(live.last||hint.textContent);
+}
+
+function penaltyAnimate(target,keeperTarget,mode,result){
+  const ball=document.querySelector("#pkBall"),keeper=document.querySelector("#pkKeeper"),res=document.querySelector("#pkResult");
+  if(!ball||!keeper)return;
+  const bt=PK_TARGETS[target],kt=PK_TARGETS[keeperTarget];
+  ball.style.setProperty("--bx",`${bt.x}%`);
+  ball.style.setProperty("--by",`${bt.y}%`);
+  ball.classList.add("fly");
+  keeper.style.setProperty("--kx",`${kt.x}%`);
+  keeper.style.setProperty("--ky",`${Math.min(74,Math.max(28,kt.y))}%`);
+  keeper.classList.add("dive");
+  if(mode==="defend")goalkeeperFlash(keeperTarget);
+  setTimeout(()=>{
+    if(res){res.textContent=result==="goal"?"GOAL!":"SAVED!";res.className=`pk-result show ${result}`;}
+  },520);
+}
+function goalkeeperFlash(i){
+  document.querySelectorAll(".pk-target").forEach((x,j)=>x.classList.toggle("chosen",j===i));
+}
+function penaltyCheckWinner(n){
+  // After 5 each, continue sudden death until both have taken the same number of kicks and scores differ.
+  if(n.shots.A>=5 && n.shots.B>=5 && n.shots.A===n.shots.B && n.scores.A!==n.scores.B){
+    n.winner=n.scores.A>n.scores.B?"A":"B";
+  }
+}
+async function penaltyShoot(st,target){
+  if(penaltyBusy||st.winner||st.phase!=="shoot")return;
+  penaltyBusy=true;
+  const n=penaltyLocal||penaltyEnsure(JSON.parse(JSON.stringify(st)));
+  const keeper=Math.floor(Math.random()*PK_TARGETS.length);
+  const saved=target===keeper;
+  penaltyAnimate(target,keeper,"shoot",saved?"save":"goal");
+  n.shots.A++;
+  n.results.A.push(saved?"save":"goal");
+  if(!saved)n.scores.A++;
+  n.last=saved?"SAVED by the computer!":"GOAL!";
+  await sleep(1200);
+  penaltyCheckWinner(n);
+  if(n.winner){penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);finishLocal(n.winner);return}
+  n.phase="defend";
+  n.botTarget=Math.floor(Math.random()*PK_TARGETS.length);
+  n.last="Computer turn — choose your dive";
+  penaltyLocal=n; penaltyBusy=false; renderPenalty(n,uid);
+}
+
+async function penaltyDefend(st,diveTarget){
+  if(penaltyBusy||st.winner||st.phase!=="defend")return;
+  penaltyBusy=true;
+  const n=penaltyLocal||penaltyEnsure(JSON.parse(JSON.stringify(st)));
+  const shot=(n.botTarget>=0?n.botTarget:Math.floor(Math.random()*PK_TARGETS.length));
+  const saved=diveTarget===shot;
+  penaltyAnimate(shot,diveTarget,"defend",saved?"save":"goal");
+  n.shots.B++;
+  n.results.B.push(saved?"save":"goal");
+  if(!saved)n.scores.B++;
+  n.last=saved?"Great save!":"Computer scores";
+  await sleep(1200);
+  penaltyCheckWinner(n);
+  if(n.winner){penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);finishLocal(n.winner);return}
+  n.phase="shoot"; n.botTarget=-1;
+  n.last=(n.shots.A>=5&&n.shots.B>=5&&n.scores.A===n.scores.B)?"Sudden death — your shot":"Your turn to shoot";
+  penaltyLocal=n; penaltyBusy=false; renderPenalty(n,uid);
+}
+async function penaltyKick(st,turn,lane){ return penaltyShoot(st,lane); }
 
 // ---------- Reaction Tap ----------
 let reactionTimer=null,reactionCountdownTimer=null,reactionBotTimer=null,reactionLocal=null,reactionLocked=false;
