@@ -262,3 +262,71 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
 .reaction-btn.phase-countdown{background:#26324f}
 .reaction-btn.phase-wait{background:#7c2d12}
 .reaction-btn.phase-go{background:#166534;transform:scale(1.02)}
+
+
+/* v17 Penalty Shootout rebuild */
+.penalty-stage{display:flex!important;flex-direction:column;align-items:center;gap:14px;padding:8px 8px 24px!important}
+.pk-top{width:min(94vw,430px);display:grid;grid-template-columns:1fr auto;gap:5px 12px;align-items:center}
+.pk-mode{font-size:.82rem;font-weight:900;letter-spacing:.12em;opacity:.85}
+.pk-scoreline{grid-column:1/-1;display:flex;justify-content:center;gap:14px;align-items:center;font-size:1.08rem}
+.pk-round{font-size:.8rem;opacity:.7;text-align:right}
+.pk-goal{
+  position:relative;width:min(94vw,430px);height:285px;
+  border:7px solid #e7eefb;border-bottom-width:9px;border-radius:5px 5px 2px 2px;
+  overflow:visible;background:linear-gradient(180deg,#14345b 0%,#0d1a2d 78%,#102c21 78%,#123a26 100%);
+  box-shadow:0 14px 40px rgba(0,0,0,.34);
+}
+.pk-net{
+  position:absolute;inset:0 0 22% 0;opacity:.22;
+  background-image:
+    linear-gradient(rgba(255,255,255,.65) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.65) 1px,transparent 1px);
+  background-size:28px 28px;
+}
+.pk-goal::after{
+  content:"";position:absolute;left:50%;bottom:-52px;transform:translateX(-50%);
+  width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.18);
+}
+.pk-target{
+  position:absolute;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:50%;
+  border:2px dashed rgba(255,255,255,.52);background:rgba(255,255,255,.08);
+  display:grid;place-items:center;color:#fff;font-size:1.1rem;z-index:6;
+}
+.pk-target:active{transform:translate(-50%,-50%) scale(.9)}
+.pk-target.chosen{border-style:solid;background:rgba(56,189,248,.28)}
+.pk-goal.defend .pk-target{border-color:rgba(125,211,252,.65)}
+.pk-keeper{
+  position:absolute;left:50%;top:61%;width:58px;height:84px;transform:translate(-50%,-50%);
+  z-index:4;transition:left .46s cubic-bezier(.2,.85,.25,1),top .46s cubic-bezier(.2,.85,.25,1),transform .46s;
+}
+.pk-keeper.dive{left:var(--kx);top:var(--ky);transform:translate(-50%,-50%) rotate(-8deg)}
+.pk-head{position:absolute;left:20px;top:0;width:18px;height:18px;border-radius:50%;background:#f1c6a8;border:2px solid rgba(0,0,0,.18)}
+.pk-body{position:absolute;left:15px;top:17px;width:28px;height:39px;border-radius:10px 10px 7px 7px;background:#f59e0b;border:2px solid rgba(255,255,255,.35)}
+.pk-arm{position:absolute;top:25px;width:34px;height:9px;border-radius:8px;background:#f59e0b;border:2px solid rgba(255,255,255,.3)}
+.pk-arm.left{right:38px;transform:rotate(-25deg);transform-origin:right center}
+.pk-arm.right{left:38px;transform:rotate(25deg);transform-origin:left center}
+.pk-ball{
+  position:absolute;left:50%;top:112%;transform:translate(-50%,-50%);
+  font-size:34px;z-index:8;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5));
+  transition:left .56s cubic-bezier(.18,.8,.25,1),top .56s cubic-bezier(.18,.8,.25,1),transform .56s;
+}
+.pk-ball.fly{left:var(--bx);top:var(--by);transform:translate(-50%,-50%) scale(.72) rotate(280deg)}
+.pk-result{
+  position:absolute;left:50%;top:45%;transform:translate(-50%,-50%) scale(.8);
+  font-size:2rem;font-weight:1000;letter-spacing:.06em;opacity:0;z-index:10;
+  text-shadow:0 3px 12px #000;pointer-events:none
+}
+.pk-result.show{animation:pkPop .58s ease forwards}
+.pk-result.goal{color:#86efac}.pk-result.save{color:#fca5a5}
+@keyframes pkPop{0%{opacity:0;transform:translate(-50%,-50%) scale(.7)}60%{opacity:1;transform:translate(-50%,-50%) scale(1.12)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.pk-panel{width:min(94vw,430px);display:grid;gap:8px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(255,255,255,.035)}
+.pk-panel>div{display:grid;grid-template-columns:86px 1fr;align-items:center;gap:8px}
+.pk-panel span{font-size:.82rem;opacity:.8}
+.pk-dots{display:flex;gap:7px;flex-wrap:wrap}
+.pk-dot{font-size:1rem;opacity:.5}.pk-dot.goal{color:#4ade80;opacity:1}.pk-dot.save{color:#fb7185;opacity:1}
+.pk-hint{width:min(94vw,430px);text-align:center;font-size:.9rem;line-height:1.4;opacity:.85;padding:0 8px}
+@media(max-width:390px){
+  .pk-goal{height:250px}
+  .pk-target{width:44px;height:44px}
+  .pk-ball{font-size:30px}
+}
