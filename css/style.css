@@ -218,3 +218,47 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
 /* v15 Reaction */
 .reaction-wrap{display:flex!important;flex-direction:column;align-items:center;gap:12px}.reaction-btn{width:min(88vw,360px);height:180px;font-size:2.5rem;font-weight:900}.reaction-btn.phase-countdown{background:#27324f}.reaction-btn.phase-wait{background:#7c2d12}.reaction-btn.phase-go{background:#166534}.reaction-stats{font-weight:700;text-align:center;color:#cdd5ef}
 @media(max-width:380px){.snl-board{grid-template-columns:repeat(10,28px)}.snl-cell{width:28px;height:28px}.snake-live{grid-template-columns:repeat(10,25px)}.snake-live .snake-cell{width:25px;height:25px}}
+
+
+/* v16 gameplay rebuild */
+.snake-grid-16{
+  display:grid!important;
+  grid-template-columns:repeat(16,minmax(0,1fr));
+  width:min(92vw,420px);
+  aspect-ratio:1/1;
+  gap:1px;
+  padding:4px;
+  border-radius:16px;
+  background:#0b1020;
+}
+.snake-grid-16 .snake-cell{width:auto!important;height:auto!important;aspect-ratio:1/1;border-radius:2px;font-size:.55rem;background:#151d31}
+.snake-grid-16 .snake-a{background:#4ade80}
+.snake-grid-16 .snake-b{background:#a78bfa}
+.snake-grid-16 .snake-head{outline:2px solid #fff;outline-offset:-2px}
+.snake-dpad{display:grid!important;grid-template-columns:repeat(4,56px);gap:8px;justify-content:center}
+.snake-dpad button{min-width:56px;min-height:50px;font-size:1.35rem}
+
+.pong-live-court,.air-live-rink{position:relative;width:min(92vw,360px);height:440px;border:2px solid rgba(255,255,255,.35);border-radius:18px;overflow:hidden;touch-action:none;user-select:none;background:#0c1428}
+.pong-live-court::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px dashed rgba(255,255,255,.35)}
+.pong-live-score,.air-live-score{position:absolute;top:48%;left:50%;transform:translate(-50%,-50%);font-weight:900;font-size:1.2rem;z-index:1}
+.pong-live-ball,.air-live-puck{position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;transform:translate(-50%,-50%);z-index:4}
+.pong-live-player,.pong-live-ai{position:absolute;width:86px;height:12px;border-radius:8px;transform:translate(-50%,-50%);background:#7dd3fc;z-index:3}
+.pong-live-player{top:94%}.pong-live-ai{top:6%;background:#c4b5fd}
+.air-live-rink{height:460px;border-radius:30px;background:#111a2e}
+.air-midline{position:absolute;left:0;right:0;top:50%;border-top:2px solid rgba(255,255,255,.25)}
+.air-live-goal{position:absolute;left:34%;width:32%;height:8px;background:#fff;opacity:.7}
+.air-live-goal.top{top:0}.air-live-goal.bottom{bottom:0}
+.air-live-player,.air-live-ai{position:absolute;width:50px;height:50px;border-radius:50%;transform:translate(-50%,-50%);background:#38bdf8;z-index:3}
+.air-live-ai{background:#a78bfa}
+
+.dice-face{font-size:2.8rem;min-width:64px;text-align:center;transition:transform .08s}
+.dice-face.rolling{transform:rotate(20deg) scale(1.08)}
+.snl-controls{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}
+
+.penalty-live .keeper,.penalty-live .ball{transition:transform .65s cubic-bezier(.2,.8,.2,1)}
+.penalty-live .goal-zone{z-index:5}
+
+.reaction-btn{touch-action:manipulation}
+.reaction-btn.phase-countdown{background:#26324f}
+.reaction-btn.phase-wait{background:#7c2d12}
+.reaction-btn.phase-go{background:#166534;transform:scale(1.02)}
