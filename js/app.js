@@ -43,6 +43,8 @@ let roomUnsub=null, queueUnsub=null, micStream=null, pc=null, botMode=false;
 let localScore=0, oppScore=0, gameFinished=false, rpsPick=null;
 let lastScoredRoundKey=null, botRound=1, botThinking=false;
 let autoRematchTimer=null, autoRematchInterval=null, lastRpsScoredRound=0;
+let autoRematchRemaining=0, autoRematchPaused=false, autoRematchRoomData=null, autoRematchDeadline=0;
+let tickAudioCtx=null;
 let checkersPlan=null, checkersPlanTimer=null, checkersPlanCountdown=null, checkersAnimating=false;
 let overallStats={wins:0,losses:0,draws:0,played:0};
 
@@ -490,45 +492,155 @@ function applyScore(winner){
   recordOverallResult(winner);
 }
 
-function clearAutoRematch(){
+function clearAutoRematch(hide=true){
   if(autoRematchTimer){clearTimeout(autoRematchTimer);autoRematchTimer=null}
   if(autoRematchInterval){clearInterval(autoRematchInterval);autoRematchInterval=null}
+  autoRematchDeadline=0;
+  if(hide) hideRoundCountdown();
+}
+
+function ensureRoundCountdownUI(){
+  let box=document.querySelector("#roundCountdownBox");
+  if(box)return box;
+  box=document.createElement("div");
+  box.id="roundCountdownBox";
+  box.className="round-countdown hidden";
+  box.innerHTML=`
+    <div class="round-countdown-ring">
+      <div class="round-countdown-number" id="roundCountdownNumber">3</div>
+    </div>
+    <div class="round-countdown-title" id="roundCountdownTitle">Next round</div>
+    <button class="round-countdown-pause" id="roundCountdownPause" type="button">⏸ Pause</button>
+  `;
+  document.body.appendChild(box);
+  box.querySelector("#roundCountdownPause").onclick=toggleAutoRematchPause;
+  return box;
+}
+
+function showRoundCountdown(){
+  const box=ensureRoundCountdownUI();
+  box.classList.remove("hidden");
+  updateRoundCountdownUI();
+}
+
+function hideRoundCountdown(){
+  const box=document.querySelector("#roundCountdownBox");
+  if(box)box.classList.add("hidden");
+}
+
+function updateRoundCountdownUI(){
+  const box=ensureRoundCountdownUI();
+  const num=box.querySelector("#roundCountdownNumber");
+  const title=box.querySelector("#roundCountdownTitle");
+  const pause=box.querySelector("#roundCountdownPause");
+  const shown=Math.max(0,Math.ceil(autoRematchRemaining/1000));
+  num.textContent=autoRematchPaused?"Ⅱ":String(shown||1);
+  title.textContent=autoRematchPaused?"Round paused":`${resultTextFromState(autoRematchRoomData?.state)} • Next round`;
+  pause.textContent=autoRematchPaused?"▶ Resume":"⏸ Pause";
+  // Pausing is safe locally in computer mode. Hide it in online rooms to avoid desync.
+  pause.style.display=botMode?"inline-flex":"none";
+}
+
+function tickSound(){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    if(!tickAudioCtx)tickAudioCtx=new AC();
+    if(tickAudioCtx.state==="suspended")tickAudioCtx.resume().catch(()=>{});
+    const o=tickAudioCtx.createOscillator(),g=tickAudioCtx.createGain();
+    o.type="sine";o.frequency.value=1050;
+    g.gain.setValueAtTime(.0001,tickAudioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.045,tickAudioCtx.currentTime+.008);
+    g.gain.exponentialRampToValueAtTime(.0001,tickAudioCtx.currentTime+.055);
+    o.connect(g);g.connect(tickAudioCtx.destination);o.start();o.stop(tickAudioCtx.currentTime+.06);
+  }catch(e){}
+}
+
+function resetLocalGameRuntime(){
+  // Reset local-only state so a finished computer round can actually start fresh.
+  clearSnakeTimer?.();
+  clearPong?.();
+  clearAir?.();
+  clearReactionTimers?.();
+  clearPenaltyTimer?.();
+  snlLocal=null; snlBusy=false;
+  penaltyLocal=null; penaltyBusy=false;
+  numberLocal=null; numberBotBusy=false;
+  reactionLocal=null; reactionLocked=false;
+  snakeLiveState=null;
+  pongLive=null; airLive=null;
+}
+
+function armAutoRematchTimer(){
+  clearAutoRematch(false);
+  autoRematchPaused=false;
+  autoRematchDeadline=performance.now()+autoRematchRemaining;
+  let lastShown=Math.ceil(autoRematchRemaining/1000);
+  showRoundCountdown();
+  tickSound();
+
+  autoRematchInterval=setInterval(()=>{
+    if(autoRematchPaused)return;
+    autoRematchRemaining=Math.max(0,autoRematchDeadline-performance.now());
+    const shown=Math.ceil(autoRematchRemaining/1000);
+    if(shown!==lastShown && shown>0){lastShown=shown;tickSound()}
+    updateRoundCountdownUI();
+  },100);
+
+  autoRematchTimer=setTimeout(runAutoRematch,autoRematchRemaining);
+}
+
+function toggleAutoRematchPause(){
+  if(!botMode)return;
+  if(!autoRematchPaused){
+    autoRematchRemaining=Math.max(250,autoRematchDeadline-performance.now());
+    autoRematchPaused=true;
+    if(autoRematchTimer){clearTimeout(autoRematchTimer);autoRematchTimer=null}
+    if(autoRematchInterval){clearInterval(autoRematchInterval);autoRematchInterval=null}
+    updateRoundCountdownUI();
+    setStatus(`${resultTextFromState(autoRematchRoomData?.state)} • Next round paused`);
+  }else{
+    autoRematchPaused=false;
+    setStatus(`${resultTextFromState(autoRematchRoomData?.state)} • Resuming…`);
+    armAutoRematchTimer();
+  }
+}
+
+async function runAutoRematch(){
+  clearAutoRematch();
+  autoRematchPaused=false;
+  if(botMode){
+    botRound++;
+    lastScoredRoundKey=null;
+    botThinking=false;
+    gameFinished=false;
+    resetLocalGameRuntime();
+    const state=initialState(currentGame.id);
+    renderState(state,uid);
+    setStatus("Your turn");
+    return;
+  }
+  // Only A resets the shared room so both clients do not reset it twice.
+  if(myMark==="A" && roomId){
+    const snap=await get(roomRef("round"));
+    const nextRound=(snap.val()||1)+1;
+    await update(roomRef(),{
+      state:initialState(currentGame.id),
+      status:"playing",
+      turn:(nextRound%2===0 ? opponent.uid : uid),
+      round:nextRound
+    });
+  }
 }
 
 function startAutoRematchCountdown(roomData=null){
   if(currentGame?.id==="rps") return;
   clearAutoRematch();
-  let n=3;
-  setStatus(`${resultTextFromState(roomData?.state)} • Next round in ${n}…`);
-  autoRematchInterval=setInterval(()=>{
-    n--;
-    if(n>0)setStatus(`${resultTextFromState(roomData?.state)} • Next round in ${n}…`);
-  },1000);
-
-  autoRematchTimer=setTimeout(async()=>{
-    clearAutoRematch();
-    if(botMode){
-      botRound++;
-      lastScoredRoundKey=null;
-      botThinking=false;
-      gameFinished=false;
-      const state=initialState(currentGame.id);
-      renderState(state,uid);
-      setStatus("Your turn");
-      return;
-    }
-    // Only A resets the shared room so both clients do not reset it twice.
-    if(myMark==="A" && roomId){
-      const snap=await get(roomRef("round"));
-      const nextRound=(snap.val()||1)+1;
-      await update(roomRef(),{
-        state:initialState(currentGame.id),
-        status:"playing",
-        turn:(nextRound%2===0 ? opponent.uid : uid),
-        round:nextRound
-      });
-    }
-  },3200);
+  autoRematchRoomData=roomData;
+  autoRematchRemaining=4000;
+  autoRematchPaused=false;
+  setStatus(`${resultTextFromState(roomData?.state)} • Next round in 4…`);
+  armAutoRematchTimer();
 }
 
 function resultTextFromState(state){
@@ -1779,35 +1891,95 @@ async function penaltyComputerShot(st){
 }
 async function penaltyKick(st,turn,lane){return penaltyShoot(st,lane)}
 // ---------- Reaction Tap ----------
-let reactionTimer=null,reactionCountdownTimer=null,reactionBotTimer=null,reactionLocal=null,reactionLocked=false;
+let reactionTimer=null,reactionCountdownTimer=null,reactionBotTimer=null,reactionLocal=null,reactionLocked=false,reactionPaused=false,reactionPauseLeft=0;
 function clearReactionTimers(){if(reactionTimer)clearTimeout(reactionTimer);if(reactionCountdownTimer)clearInterval(reactionCountdownTimer);if(reactionBotTimer)clearTimeout(reactionBotTimer);reactionTimer=reactionCountdownTimer=reactionBotTimer=null}
 function reactionAvg(a=[]){if(!a.length)return 0;return Math.round(a.reduce((x,y)=>x+y,0)/a.length)}
 function renderReaction(st,turn){
   const b=$("#gameBoard");b.className="game-board reaction-wrap";b.innerHTML="";
   if(botMode&&!reactionLocal)reactionLocal=JSON.parse(JSON.stringify(st));
   const live=botMode?reactionLocal:st;
-  const q=document.createElement("button");q.className=`reaction-btn phase-${live.phase}`;q.disabled=!!live.winner;q.textContent=live.phase==="countdown"?String(live.countdown||3):live.phase==="wait"?"WAIT…":live.phase==="go"?"TAP!":"READY";q.onclick=()=>reactionTap(live,turn);b.appendChild(q);
-  const stats=document.createElement("div");stats.className="reaction-stats";stats.textContent=`You ${live.scores.A} • Computer ${live.scores.B} • Avg ${reactionAvg(live.times.A)||"—"} ms`;b.appendChild(stats);
-  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):(live.last||"Get ready"));
-  if(botMode&&!reactionTimer&&!reactionCountdownTimer&&!reactionBotTimer&&!live.winner&&live.phase==="countdown")startReactionRound(live);
+
+  const shell=document.createElement("div");shell.className="reaction-countdown-shell";
+  const ring=document.createElement("div");ring.className=`reaction-ring phase-${live.phase}`;
+  const q=document.createElement("button");q.className=`reaction-btn phase-${live.phase}`;
+  q.disabled=!!live.winner||reactionPaused;
+  q.textContent=reactionPaused?"Ⅱ":live.phase==="countdown"?String(live.countdown||3):live.phase==="wait"?"WAIT…":live.phase==="go"?"TAP!":"READY";
+  q.onclick=()=>reactionTap(live,turn);
+  ring.appendChild(q);shell.appendChild(ring);b.appendChild(shell);
+
+  const pause=document.createElement("button");pause.className="reaction-pause-btn";
+  pause.textContent=reactionPaused?"▶ Resume":"⏸ Pause";
+  pause.disabled=!!live.winner||live.phase==="go";
+  pause.onclick=()=>toggleReactionPause(live);
+  b.appendChild(pause);
+
+  const stats=document.createElement("div");stats.className="reaction-stats";
+  stats.textContent=`You ${live.scores.A} • Computer ${live.scores.B} • Avg ${reactionAvg(live.times.A)||"—"} ms`;
+  b.appendChild(stats);
+  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):(reactionPaused?"Paused":live.last||"Get ready"));
+  if(botMode&&!reactionTimer&&!reactionCountdownTimer&&!reactionBotTimer&&!live.winner&&live.phase==="countdown"&&!reactionPaused)startReactionRound(live);
 }
+
 function startReactionRound(st){
-  clearReactionTimers();reactionLocked=false;reactionLocal=st;st.phase="countdown";st.countdown=3;renderReactionFrame(st);
+  clearReactionTimers();reactionLocked=false;reactionPaused=false;reactionLocal=st;st.phase="countdown";st.countdown=3;
+  renderReactionFrame(st);tickSound();
   reactionCountdownTimer=setInterval(()=>{
+    if(reactionPaused)return;
     st.countdown--;
-    if(st.countdown>0){renderReactionFrame(st);return}
-    clearInterval(reactionCountdownTimer);reactionCountdownTimer=null;st.phase="wait";st.last="Wait for TAP!";renderReactionFrame(st);
+    if(st.countdown>0){tickSound();renderReactionFrame(st);return}
+    clearInterval(reactionCountdownTimer);reactionCountdownTimer=null;
+    st.phase="wait";st.last="Wait for TAP!";renderReactionFrame(st);
     reactionTimer=setTimeout(()=>{
-      reactionTimer=null;st.phase="go";st.goAt=performance.now();st.last="";renderReactionFrame(st);
+      reactionTimer=null;if(reactionPaused)return;
+      st.phase="go";st.goAt=performance.now();st.last="";renderReactionFrame(st);
+      // A higher-pitched cue on GO.
+      tickSound();
       const botTime=260+Math.floor(Math.random()*340);
-      reactionBotTimer=setTimeout(()=>{if(st.phase!=="go"||reactionLocked)return;reactionLocked=true;st.times.B.push(botTime);st.scores.B++;st.last=`Computer: ${botTime} ms`;finishReactionRound(st)},botTime);
+      reactionBotTimer=setTimeout(()=>{
+        if(st.phase!=="go"||reactionLocked||reactionPaused)return;
+        reactionLocked=true;st.times.B.push(botTime);st.scores.B++;
+        st.last=`Computer: ${botTime} ms`;finishReactionRound(st)
+      },botTime);
     },900+Math.floor(Math.random()*2200));
-  },650);
+  },1000);
 }
+
 function renderReactionFrame(st){
-  const btn=document.querySelector(".reaction-btn");if(!btn)return;btn.className=`reaction-btn phase-${st.phase}`;btn.textContent=st.phase==="countdown"?String(st.countdown):st.phase==="wait"?"WAIT…":"TAP!";
-  const ss=document.querySelector(".reaction-stats");if(ss)ss.textContent=`You ${st.scores.A} • Computer ${st.scores.B} • Avg ${reactionAvg(st.times.A)||"—"} ms`;setStatus(st.last||"Get ready");
+  const btn=document.querySelector(".reaction-btn");if(!btn)return;
+  btn.className=`reaction-btn phase-${st.phase}`;
+  btn.textContent=reactionPaused?"Ⅱ":st.phase==="countdown"?String(st.countdown):st.phase==="wait"?"WAIT…":"TAP!";
+  btn.disabled=reactionPaused||!!st.winner;
+  const ring=document.querySelector(".reaction-ring");if(ring)ring.className=`reaction-ring phase-${st.phase}${reactionPaused?" paused":""}`;
+  const pause=document.querySelector(".reaction-pause-btn");
+  if(pause){pause.textContent=reactionPaused?"▶ Resume":"⏸ Pause";pause.disabled=!!st.winner||st.phase==="go";}
+  const ss=document.querySelector(".reaction-stats");
+  if(ss)ss.textContent=`You ${st.scores.A} • Computer ${st.scores.B} • Avg ${reactionAvg(st.times.A)||"—"} ms`;
+  setStatus(reactionPaused?"Paused":st.last||"Get ready");
 }
+
+function toggleReactionPause(st){
+  if(st.winner||st.phase==="go")return;
+  reactionPaused=!reactionPaused;
+  if(reactionPaused){
+    if(reactionTimer){
+      clearTimeout(reactionTimer);reactionTimer=null;
+      reactionPauseLeft=1100;
+    }
+  }else if(st.phase==="wait"&&!reactionTimer){
+    reactionTimer=setTimeout(()=>{
+      reactionTimer=null;
+      if(reactionPaused)return;
+      st.phase="go";st.goAt=performance.now();st.last="";renderReactionFrame(st);tickSound();
+      const botTime=260+Math.floor(Math.random()*340);
+      reactionBotTimer=setTimeout(()=>{
+        if(st.phase!=="go"||reactionLocked||reactionPaused)return;
+        reactionLocked=true;st.times.B.push(botTime);st.scores.B++;st.last=`Computer: ${botTime} ms`;finishReactionRound(st)
+      },botTime);
+    },reactionPauseLeft||1100);
+  }
+  renderReactionFrame(st);
+}
+
 function reactionTap(st,turn){
   if(st.winner||reactionLocked)return;
   if(st.phase==="countdown"||st.phase==="wait"){
@@ -1818,6 +1990,7 @@ function reactionTap(st,turn){
   const ms=Math.max(1,Math.round(performance.now()-st.goAt));st.times.A.push(ms);st.scores.A++;st.last=`Your reaction: ${ms} ms`;finishReactionRound(st);
 }
 function finishReactionRound(st){
+  reactionPaused=false; reactionPauseLeft=0;
   clearReactionTimers();if(st.scores.A>=5||st.scores.B>=5){st.winner=st.scores.A>st.scores.B?"A":"B";reactionLocal=st;renderReaction(st,uid);finishLocal(st.winner);return}
   st.round++;st.phase="countdown";st.countdown=3;reactionLocal=st;setTimeout(()=>{if(currentGame?.id==="reaction"&&!gameFinished)startReactionRound(st)},900);renderReaction(st,uid);
 }
@@ -2100,6 +2273,7 @@ function finishLocal(winner){
 $("#leaveBtn").onclick=leaveRoom;
 async function leaveRoom(){
   clearAutoRematch();
+  resetLocalGameRuntime();
   clearSnakeTimer();
   clearPong();
   clearAir();
@@ -2126,7 +2300,9 @@ $("#rematchBtn").onclick=async()=>{
     botRound++;
     lastScoredRoundKey=null;
     botThinking=false;
+    resetLocalGameRuntime();
     renderState(initialState(currentGame.id),uid);
+    setStatus("Your turn");
     return;
   }
 
