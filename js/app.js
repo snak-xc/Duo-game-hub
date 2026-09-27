@@ -239,7 +239,7 @@ function initialState(game){
   if(game==="quiz") return {index:Math.floor(Math.random()*QUIZ_BANK.length),scores:{A:0,B:0},winner:null};
   if(game==="math") return makeMathState();
   if(game==="numberguess") return {target:Math.floor(Math.random()*100)+1,lastGuess:null,hint:"1 - 100",winner:null};
-  if(game==="snake") return {bodies:{A:[55,56,57],B:[44,43,42]},dirs:{A:"left",B:"right"},food:50,scores:{A:0,B:0},winner:null};
+  if(game==="snake") return {bodies:{A:[216,217,218],B:[39,38,37]},dirs:{A:"left",B:"right"},food:120,scores:{A:0,B:0},winner:null};
   if(game==="pong") return {ballLane:1,rally:0,scores:{A:0,B:0},winner:null,last:"Move paddle to the ball lane"};
   if(game==="airhockey") return {scores:{A:0,B:0},round:1,puckLane:1,strikerLane:{A:1,B:1},last:"Drag your striker, then shoot",winner:null};
   if(game==="snakesladders") return {pos:{A:1,B:1},lastRoll:null,last:"Roll the dice",winner:null};
@@ -1382,82 +1382,297 @@ function renderNumberGuess(st,turn){
 }
 async function numberGuess(st,turn,v){if(!canMove(turn)||st.winner||v<1||v>100)return;const n=JSON.parse(JSON.stringify(st));n.lastGuess=v;if(v===n.target)n.winner=myMark;else n.hint=v<n.target?`Higher than ${v}`:`Lower than ${v}`;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
 
+
 // ---------- Snake Duel ----------
-let snakeTimer=null;
-function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}}
-function snakeNext(pos,dir){let r=Math.floor(pos/10),c=pos%10;if(dir==="up")r=(r+9)%10;if(dir==="down")r=(r+1)%10;if(dir==="left")c=(c+9)%10;if(dir==="right")c=(c+1)%10;return r*10+c}
+let snakeTimer=null, snakeLiveState=null;
+function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null}
+function snakeNext16(pos,dir){let r=Math.floor(pos/16),c=pos%16;if(dir==="up")r=(r+15)%16;if(dir==="down")r=(r+1)%16;if(dir==="left")c=(c+15)%16;if(dir==="right")c=(c+1)%16;return r*16+c}
 function snakeOpposite(a,b){return (a==="up"&&b==="down")||(a==="down"&&b==="up")||(a==="left"&&b==="right")||(a==="right"&&b==="left")}
+function snakeSpawnFood(st){
+  const empty=[...Array(256).keys()].filter(i=>!st.bodies.A.includes(i)&&!st.bodies.B.includes(i));
+  return empty[Math.floor(Math.random()*empty.length)]??0;
+}
 function renderSnake(st,turn){
   const b=$("#gameBoard");b.className="game-board snake-duel-wrap";b.innerHTML="";
-  const g=document.createElement("div");g.className="snake-grid snake-live";
-  for(let i=0;i<100;i++){const cell=document.createElement("div");cell.className="snake-cell";if(i===st.food)cell.textContent="🍎";if(st.bodies.A.includes(i))cell.classList.add("snake-a");if(st.bodies.B.includes(i))cell.classList.add("snake-b");g.appendChild(cell)}
+  if(botMode){
+    if(!snakeLiveState)snakeLiveState=JSON.parse(JSON.stringify(st));
+    const g=document.createElement("div");g.className="snake-grid snake-live snake-grid-16";
+    for(let i=0;i<256;i++){const cell=document.createElement("div");cell.className="snake-cell";g.appendChild(cell)}
+    b.appendChild(g);
+    const ctl=document.createElement("div");ctl.className="snake-controls snake-dpad";
+    [["up","↑"],["left","←"],["down","↓"],["right","→"]].forEach(([d,t])=>{
+      const q=document.createElement("button");q.textContent=t;q.setAttribute("aria-label",d);
+      q.onclick=()=>{if(!snakeLiveState)return;const cur=snakeLiveState.dirs.A;if(!snakeOpposite(cur,d))snakeLiveState.dirs.A=d};
+      ctl.appendChild(q);
+    });
+    b.appendChild(ctl);
+    renderSnakeFrame(snakeLiveState);
+    if(!snakeTimer&&!snakeLiveState.winner){
+      snakeTimer=setInterval(()=>{
+        if(currentGame?.id!=="snake"||gameFinished||!snakeLiveState){clearSnakeTimer();return}
+        snakeLiveState=snakeTick16(snakeLiveState);
+        renderSnakeFrame(snakeLiveState);
+        if(snakeLiveState.winner){const w=snakeLiveState.winner;clearSnakeTimer();finishLocal(w)}
+      },210);
+    }
+    return;
+  }
+
+  // Online mode keeps a turn-safe board until a shared real-time loop is added.
+  const g=document.createElement("div");g.className="snake-grid snake-grid-16";
+  for(let i=0;i<256;i++){const cell=document.createElement("div");cell.className="snake-cell";if(i===st.food)cell.textContent="●";if(st.bodies.A.includes(i))cell.classList.add("snake-a");if(st.bodies.B.includes(i))cell.classList.add("snake-b");g.appendChild(cell)}
   b.appendChild(g);
-  const ctl=document.createElement("div");ctl.className="snake-controls";
-  [["up","↑"],["left","←"],["down","↓"],["right","→"]].forEach(([d,t])=>{const q=document.createElement("button");q.textContent=t;q.onclick=()=>snakeDirection(st,d);ctl.appendChild(q)});b.appendChild(ctl);
-  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.scores[myMark]||0} • Opponent ${st.scores[myMark==="A"?"B":"A"]||0}`);
-  if(botMode&&!snakeTimer&&!st.winner){let live=JSON.parse(JSON.stringify(st));snakeTimer=setInterval(()=>{if(currentGame?.id!=="snake"||gameFinished){clearSnakeTimer();return}live=snakeTick(live);renderSnakeFrame(live);if(live.winner){clearSnakeTimer();finishLocal(live.winner)}},360)}
+  setStatus("Snake Duel online mode");
 }
-function renderSnakeFrame(st){const cells=[...document.querySelectorAll(".snake-live .snake-cell")];if(!cells.length)return;cells.forEach((x,i)=>{x.className="snake-cell";x.textContent=i===st.food?"🍎":""});st.bodies.A.forEach(i=>cells[i]?.classList.add("snake-a"));st.bodies.B.forEach(i=>cells[i]?.classList.add("snake-b"));setStatus(st.winner?(st.winner===myMark?"You win!":"Computer wins"):`You ${st.scores.A||0} • Computer ${st.scores.B||0}`)}
-function snakeDirection(st,d){const cur=st.dirs[myMark];if(snakeOpposite(cur,d))return;st.dirs[myMark]=d;if(!botMode)writeState(st,uid,"playing")}
-function snakeTick(st){const n=JSON.parse(JSON.stringify(st));const dirs=["up","down","left","right"];if(botMode&&Math.random()<.28){const head=n.bodies.B[0],hr=Math.floor(head/10),hc=head%10,fr=Math.floor(n.food/10),fc=n.food%10;let choices=[];if(fr<hr)choices.push("up");if(fr>hr)choices.push("down");if(fc<hc)choices.push("left");if(fc>hc)choices.push("right");choices=choices.filter(d=>!snakeOpposite(n.dirs.B,d));if(choices.length)n.dirs.B=choices[Math.floor(Math.random()*choices.length)]}
-  for(const mark of ["A","B"]){const body=n.bodies[mark],head=snakeNext(body[0],n.dirs[mark]);body.unshift(head);if(head===n.food){n.scores[mark]++;let empty=[...Array(100).keys()].filter(i=>!n.bodies.A.includes(i)&&!n.bodies.B.includes(i));n.food=empty[Math.floor(Math.random()*empty.length)]??0}else body.pop()}
-  const ha=n.bodies.A[0],hb=n.bodies.B[0];if(ha===hb||n.bodies.A.slice(1).includes(ha))n.winner="B";if(n.bodies.B.slice(1).includes(hb))n.winner=n.winner?"draw":"A";if((n.scores.A||0)>=5)n.winner="A";if((n.scores.B||0)>=5)n.winner="B";return n}
-async function snakeMove(st,turn,d){snakeDirection(st,d)}
+function renderSnakeFrame(st){
+  const cells=[...document.querySelectorAll(".snake-live .snake-cell")];
+  if(!cells.length)return;
+  cells.forEach((x,i)=>{x.className="snake-cell";x.textContent=i===st.food?"●":""});
+  st.bodies.A.forEach((i,k)=>{cells[i]?.classList.add("snake-a");if(k===0)cells[i]?.classList.add("snake-head")});
+  st.bodies.B.forEach((i,k)=>{cells[i]?.classList.add("snake-b");if(k===0)cells[i]?.classList.add("snake-head")});
+  setStatus(st.winner?(st.winner==="A"?"You win!":st.winner==="B"?"Computer wins":"Draw"):`You ${st.scores.A||0} • Computer ${st.scores.B||0} • First to 10`);
+}
+function snakeTick16(st){
+  const n=JSON.parse(JSON.stringify(st));
+  // AI chooses a safe direction biased toward food.
+  const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
+  const bh=n.bodies.B[0],fr=Math.floor(n.food/16),fc=n.food%16;
+  let ranked=dirs.map(d=>{
+    const p=snakeNext16(bh,d),r=Math.floor(p/16),cc=p%16;
+    const danger=n.bodies.B.slice(0,-1).includes(p)||n.bodies.A.includes(p);
+    const dist=Math.abs(r-fr)+Math.abs(cc-fc);
+    return {d,score:(danger?1000:0)+dist+Math.random()*3};
+  }).sort((a,b)=>a.score-b.score);
+  if(ranked.length)n.dirs.B=ranked[0].d;
+
+  for(const mark of ["A","B"]){
+    const body=n.bodies[mark],head=snakeNext16(body[0],n.dirs[mark]);
+    body.unshift(head);
+    if(head===n.food){n.scores[mark]++;n.food=snakeSpawnFood(n)}else body.pop();
+  }
+  const ha=n.bodies.A[0],hb=n.bodies.B[0];
+  const aCrash=n.bodies.A.slice(1).includes(ha)||n.bodies.B.includes(ha);
+  const bCrash=n.bodies.B.slice(1).includes(hb)||n.bodies.A.includes(hb);
+  if(aCrash&&bCrash)n.winner="draw";else if(aCrash)n.winner="B";else if(bCrash)n.winner="A";
+  if((n.scores.A||0)>=10)n.winner="A";if((n.scores.B||0)>=10)n.winner="B";
+  return n;
+}
+async function snakeMove(st,turn,d){if(botMode&&snakeLiveState&&!snakeOpposite(snakeLiveState.dirs.A,d))snakeLiveState.dirs.A=d}
 
 // ---------- Pong ----------
+let pongLive=null,pongRAF=null,pongLast=0;
+function clearPong(){if(pongRAF)cancelAnimationFrame(pongRAF);pongRAF=null;pongLive=null;pongLast=0}
 function renderPong(st,turn){
   const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";
-  const court=document.createElement("div");court.className="pong-court";court.innerHTML=`<div class="pong-score">${st.scores.A} : ${st.scores.B}</div><div class="pong-op-paddle"></div><div class="pong-ball lane-${st.ballLane}"></div><div class="pong-player-paddle lane-${st.paddleLane||1}"></div>`;b.appendChild(court);
-  const lanes=document.createElement("div");lanes.className="lane-controls";[0,1,2].forEach(i=>{const q=document.createElement("button");q.textContent=["← Left","Center","Right →"][i];q.onclick=()=>pongHit(st,turn,i);lanes.appendChild(q)});b.appendChild(lanes);
-  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`${st.last||"Match the ball lane"} • Rally ${st.rally||0}`)
+  if(!botMode){
+    const note=document.createElement("div");note.className="question";note.textContent="Online Pong is being kept in turn mode.";b.appendChild(note);return;
+  }
+  if(!pongLive)pongLive={px:.5,ai:.5,bx:.5,by:.5,vx:.22,vy:.34,scores:{A:0,B:0},winner:null};
+  const court=document.createElement("div");court.className="pong-live-court";court.innerHTML='<div class="pong-live-score"></div><div class="pong-live-ai"></div><div class="pong-live-ball"></div><div class="pong-live-player"></div>';
+  b.appendChild(court);
+  const move=e=>{if(!pongLive)return;const r=court.getBoundingClientRect();pongLive.px=Math.max(.1,Math.min(.9,(e.clientX-r.left)/r.width))};
+  court.addEventListener("pointerdown",e=>{court.setPointerCapture?.(e.pointerId);move(e)});
+  court.addEventListener("pointermove",e=>{if(e.buttons||e.pointerType==="touch")move(e)});
+  updatePongDOM();
+  if(!pongRAF){pongLast=performance.now();pongRAF=requestAnimationFrame(pongLoop)}
 }
-async function pongHit(st,turn,zone){
-  if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));n.paddleLane=zone;
-  if(zone===n.ballLane){n.rally++;n.last="Nice return!";n.ballLane=Math.floor(Math.random()*3)}else{const enemy=myMark==="A"?"B":"A";n.scores[enemy]++;n.rally=0;n.last="Missed — opponent scores";n.ballLane=Math.floor(Math.random()*3);if(n.scores[enemy]>=5)n.winner=enemy}
-  if(botMode){if(!n.winner&&Math.random()<.72){n.rally++;n.last="Computer returned it";n.ballLane=Math.floor(Math.random()*3)}else if(!n.winner){n.scores.A++;n.last="Computer missed — your point";if(n.scores.A>=5)n.winner="A"}renderState(n,uid);if(n.winner)finishLocal(n.winner)}else await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")
+function updatePongDOM(){
+  if(!pongLive)return;
+  const court=document.querySelector(".pong-live-court");if(!court)return;
+  const ball=court.querySelector(".pong-live-ball"),p=court.querySelector(".pong-live-player"),ai=court.querySelector(".pong-live-ai"),sc=court.querySelector(".pong-live-score");
+  ball.style.left=`${pongLive.bx*100}%`;ball.style.top=`${pongLive.by*100}%`;
+  p.style.left=`${pongLive.px*100}%`;ai.style.left=`${pongLive.ai*100}%`;
+  sc.textContent=`${pongLive.scores.A} : ${pongLive.scores.B}`;
+  setStatus(pongLive.winner?(pongLive.winner==="A"?"You win!":"Computer wins"):"Drag the bottom paddle • First to 5");
 }
+function pongResetBall(dir){pongLive.bx=.5;pongLive.by=.5;pongLive.vx=(Math.random()-.5)*.35;pongLive.vy=.34*dir}
+function pongLoop(now){
+  if(!pongLive||currentGame?.id!=="pong"||gameFinished){clearPong();return}
+  const dt=Math.min(.03,(now-pongLast)/1000||.016);pongLast=now;
+  const s=pongLive;
+  s.ai+=(s.bx-s.ai)*Math.min(1,dt*3.0);
+  s.bx+=s.vx*dt;s.by+=s.vy*dt;
+  if(s.bx<.03){s.bx=.03;s.vx=Math.abs(s.vx)}if(s.bx>.97){s.bx=.97;s.vx=-Math.abs(s.vx)}
+  if(s.vy>0&&s.by>.91&&s.by<.97&&Math.abs(s.bx-s.px)<.16){s.by=.91;s.vy=-Math.abs(s.vy)*1.025;s.vx+=(s.bx-s.px)*.35}
+  if(s.vy<0&&s.by<.09&&s.by>.03&&Math.abs(s.bx-s.ai)<.17){s.by=.09;s.vy=Math.abs(s.vy)*1.02;s.vx+=(s.bx-s.ai)*.28}
+  if(s.by>1.03){s.scores.B++;if(s.scores.B>=5)s.winner="B";pongResetBall(-1)}
+  if(s.by<-.03){s.scores.A++;if(s.scores.A>=5)s.winner="A";pongResetBall(1)}
+  updatePongDOM();
+  if(s.winner){const w=s.winner;clearPong();finishLocal(w);return}
+  pongRAF=requestAnimationFrame(pongLoop);
+}
+async function pongHit(){}
 
 // ---------- Air Hockey ----------
+let airLive=null,airRAF=null,airLast=0;
+function clearAir(){if(airRAF)cancelAnimationFrame(airRAF);airRAF=null;airLive=null;airLast=0}
 function renderAirHockey(st,turn){
   const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";
-  const rink=document.createElement("div");rink.className="air-rink";rink.innerHTML=`<div class="air-goal top"></div><div class="air-goal bottom"></div><div class="air-puck lane-${st.puckLane||1}"></div><div class="air-striker opponent lane-${st.strikerLane?.B??1}"></div><div class="air-striker player lane-${st.strikerLane?.A??1}"></div>`;b.appendChild(rink);
-  const controls=document.createElement("div");controls.className="lane-controls";[0,1,2].forEach(i=>{const q=document.createElement("button");q.textContent=["Left","Center","Right"][i];q.onclick=()=>{st.strikerLane[myMark]=i;renderAirHockey(st,turn)};controls.appendChild(q)});const shoot=document.createElement("button");shoot.className="primary mini";shoot.textContent="🏒 Shoot";shoot.onclick=()=>airShot(st,turn,st.strikerLane[myMark]);controls.appendChild(shoot);b.appendChild(controls);
-  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.scores[myMark]} • Opponent ${st.scores[myMark==="A"?"B":"A"]} • ${st.last}`)
+  if(!botMode){const note=document.createElement("div");note.className="question";note.textContent="Online Air Hockey is being kept in turn mode.";b.appendChild(note);return}
+  if(!airLive)airLive={px:.5,py:.82,aix:.5,aiy:.18,bx:.5,by:.5,vx:.18,vy:.24,scores:{A:0,B:0},winner:null};
+  const rink=document.createElement("div");rink.className="air-live-rink";rink.innerHTML='<div class="air-midline"></div><div class="air-live-score"></div><div class="air-live-goal top"></div><div class="air-live-goal bottom"></div><div class="air-live-puck"></div><div class="air-live-ai"></div><div class="air-live-player"></div>';
+  b.appendChild(rink);
+  const move=e=>{if(!airLive)return;const r=rink.getBoundingClientRect();airLive.px=Math.max(.08,Math.min(.92,(e.clientX-r.left)/r.width));airLive.py=Math.max(.55,Math.min(.92,(e.clientY-r.top)/r.height))};
+  rink.addEventListener("pointerdown",e=>{rink.setPointerCapture?.(e.pointerId);move(e)});
+  rink.addEventListener("pointermove",e=>{if(e.buttons||e.pointerType==="touch")move(e)});
+  updateAirDOM();if(!airRAF){airLast=performance.now();airRAF=requestAnimationFrame(airLoop)}
 }
-async function airShot(st,turn,lane){
-  if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const keeper=Math.floor(Math.random()*3);n.puckLane=lane;if(lane!==keeper){n.scores[myMark]++;n.last="GOAL!"}else n.last="Saved";n.round++;if(n.scores[myMark]>=5)n.winner=myMark;
-  if(botMode&&!n.winner){const botLane=Math.floor(Math.random()*3),block=Math.floor(Math.random()*3);n.strikerLane.B=botLane;if(botLane!==block){n.scores.B++;n.last+=n.last?" • Computer scores":"Computer scores"}else n.last+=n.last?" • You saved it":"You saved it";if(n.scores.B>=5)n.winner="B";renderState(n,uid);if(n.winner)finishLocal(n.winner)}else if(botMode){renderState(n,uid);finishLocal(n.winner)}else await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")
+function updateAirDOM(){
+  if(!airLive)return;const r=document.querySelector(".air-live-rink");if(!r)return;
+  r.querySelector(".air-live-puck").style.cssText=`left:${airLive.bx*100}%;top:${airLive.by*100}%`;
+  r.querySelector(".air-live-player").style.cssText=`left:${airLive.px*100}%;top:${airLive.py*100}%`;
+  r.querySelector(".air-live-ai").style.cssText=`left:${airLive.aix*100}%;top:${airLive.aiy*100}%`;
+  r.querySelector(".air-live-score").textContent=`${airLive.scores.A} : ${airLive.scores.B}`;
+  setStatus(airLive.winner?(airLive.winner==="A"?"You win!":"Computer wins"):"Drag your striker • First to 5");
 }
+function hitPuck(s,x,y,ai=false){
+  const dx=s.bx-x,dy=s.by-y,dist=Math.hypot(dx,dy);
+  if(dist<.115&&dist>.001){
+    const power=ai?.52:.62;s.vx=(dx/dist)*power;s.vy=(dy/dist)*power;
+    s.bx=x+(dx/dist)*.116;s.by=y+(dy/dist)*.116;
+  }
+}
+function airReset(dir){airLive.bx=.5;airLive.by=.5;airLive.vx=(Math.random()-.5)*.25;airLive.vy=.22*dir}
+function airLoop(now){
+  if(!airLive||currentGame?.id!=="airhockey"||gameFinished){clearAir();return}
+  const dt=Math.min(.03,(now-airLast)/1000||.016);airLast=now;const s=airLive;
+  s.aix+=(s.bx-s.aix)*Math.min(1,dt*2.5);s.aiy=.18+Math.min(.22,Math.max(0,(s.by-.15)*.18));
+  hitPuck(s,s.px,s.py,false);hitPuck(s,s.aix,s.aiy,true);
+  s.bx+=s.vx*dt;s.by+=s.vy*dt;s.vx*=.998;s.vy*=.998;
+  if(s.bx<.045){s.bx=.045;s.vx=Math.abs(s.vx)}if(s.bx>.955){s.bx=.955;s.vx=-Math.abs(s.vx)}
+  const inGoal=s.bx>.34&&s.bx<.66;
+  if(s.by<.015){if(inGoal){s.scores.A++;if(s.scores.A>=5)s.winner="A";airReset(1)}else{s.by=.015;s.vy=Math.abs(s.vy)}}
+  if(s.by>.985){if(inGoal){s.scores.B++;if(s.scores.B>=5)s.winner="B";airReset(-1)}else{s.by=.985;s.vy=-Math.abs(s.vy)}}
+  updateAirDOM();if(s.winner){const w=s.winner;clearAir();finishLocal(w);return}airRAF=requestAnimationFrame(airLoop)
+}
+async function airShot(){}
 
 // ---------- Snakes & Ladders ----------
 const SNL={4:14,9:31,20:38,28:84,40:59,51:67,63:81,17:7,54:34,62:19,64:60,87:24,93:73,95:75,99:78};
-function renderSnakesLadders(st,turn){
-  const b=$("#gameBoard");b.className="game-board snl-wrap";b.innerHTML="";const board=document.createElement("div");board.className="snl-board";
-  for(let rr=9;rr>=0;rr--){let nums=[...Array(10)].map((_,i)=>rr*10+i+1);if(rr%2===1)nums.reverse();for(const n of nums){const cell=document.createElement("div");cell.className="snl-cell";let tag="";if(SNL[n]>n)tag=`<span class="ladder">🪜${SNL[n]}</span>`;if(SNL[n]<n)tag=`<span class="snake-mark">🐍${SNL[n]}</span>`;let pieces="";if(st.pos.A===n)pieces+='<span class="piece a">●</span>';if(st.pos.B===n)pieces+='<span class="piece b">●</span>';cell.innerHTML=`<small>${n}</small>${tag}<div>${pieces}</div>`;board.appendChild(cell)}}b.appendChild(board);
-  const controls=document.createElement("div");controls.className="snl-controls";const dice=document.createElement("div");dice.className="dice-face";dice.textContent=st.lastRoll?`🎲 ${st.lastRoll}`:"🎲";controls.appendChild(dice);const q=document.createElement("button");q.className="primary mini";q.textContent="Roll Dice";q.disabled=!canMove(turn)||!!st.winner;q.onclick=()=>rollSNL(st,turn);controls.appendChild(q);b.appendChild(controls);
-  setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.pos[myMark]} • Opponent ${st.pos[myMark==="A"?"B":"A"]} • ${st.last||"Roll the dice"}`)
+let snlBusy=false,snlLocal=null;
+const DICE_FACES=["⚀","⚁","⚂","⚃","⚄","⚅"];
+function snlBoardHTML(st){
+  let out="";
+  for(let rr=9;rr>=0;rr--){let nums=[...Array(10)].map((_,i)=>rr*10+i+1);if(rr%2===1)nums.reverse();for(const n of nums){
+    let tag="";if(SNL[n]>n)tag=`<span class="ladder">🪜</span>`;if(SNL[n]<n)tag=`<span class="snake-mark">🐍</span>`;
+    let pcs="";if(st.pos.A===n)pcs+='<span class="piece a">●</span>';if(st.pos.B===n)pcs+='<span class="piece b">●</span>';
+    out+=`<div class="snl-cell"><small>${n}</small>${tag}<div>${pcs}</div></div>`;
+  }}return out;
 }
-async function rollSNL(st,turn){if(!canMove(turn)||st.winner)return;const n=JSON.parse(JSON.stringify(st));const roll=Math.floor(Math.random()*6)+1;let p=n.pos[myMark]+roll;if(p>100)p=n.pos[myMark];const before=p;if(SNL[p])p=SNL[p];n.pos[myMark]=p;n.lastRoll=roll;n.last=SNL[before]?(SNL[before]>before?`Ladder! ${before} → ${p}`:`Snake! ${before} → ${p}`):`Moved ${roll} squares`;if(p===100)n.winner=myMark;if(botMode&&!n.winner){const br=Math.floor(Math.random()*6)+1;let bp=n.pos.B+br;if(bp>100)bp=n.pos.B;const bb=bp;if(SNL[bp])bp=SNL[bp];n.pos.B=bp;n.last+=` • Computer rolled ${br}`;if(bp===100)n.winner="B";renderState(n,uid);if(n.winner)finishLocal(n.winner)}else if(botMode){renderState(n,uid);finishLocal(n.winner)}else await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function renderSnakesLadders(st,turn){
+  const b=$("#gameBoard");b.className="game-board snl-wrap";b.innerHTML="";
+  if(botMode&&!snlLocal)snlLocal=JSON.parse(JSON.stringify(st));
+  const live=botMode?snlLocal:st;
+  const board=document.createElement("div");board.className="snl-board";board.innerHTML=snlBoardHTML(live);b.appendChild(board);
+  const controls=document.createElement("div");controls.className="snl-controls";
+  const dice=document.createElement("div");dice.className="dice-face";dice.id="snlDice";dice.textContent=live.lastRoll?DICE_FACES[live.lastRoll-1]:"🎲";controls.appendChild(dice);
+  const q=document.createElement("button");q.className="primary mini";q.id="snlRollBtn";q.textContent="Roll Dice";q.disabled=snlBusy||!!live.winner||(!botMode&&!canMove(turn));q.onclick=()=>rollSNL(live,turn);controls.appendChild(q);b.appendChild(controls);
+  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):`You ${live.pos.A} • Computer ${live.pos.B} • ${live.last||"Your turn"}`);
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+async function animateDice(label){
+  const d=document.querySelector("#snlDice");if(!d)return Math.floor(Math.random()*6)+1;
+  setStatus(label);
+  for(let i=0;i<10;i++){d.textContent=DICE_FACES[Math.floor(Math.random()*6)];d.classList.toggle("rolling");await sleep(70)}
+  const roll=Math.floor(Math.random()*6)+1;d.textContent=DICE_FACES[roll-1];return roll;
+}
+async function animateSNLMove(st,mark,roll){
+  let p=st.pos[mark],target=Math.min(100,p+roll);if(p+roll>100)target=p;
+  while(p<target){p++;st.pos[mark]=p;renderSnakesLadders(st,uid);await sleep(130)}
+  if(SNL[p]){await sleep(300);st.pos[mark]=SNL[p];renderSnakesLadders(st,uid);await sleep(450)}
+}
+async function rollSNL(st,turn){
+  if(snlBusy||st.winner||(!botMode&&!canMove(turn)))return;snlBusy=true;
+  if(botMode){
+    const n=snlLocal||JSON.parse(JSON.stringify(st));
+    let r=await animateDice("Your dice is rolling…");n.lastRoll=r;await animateSNLMove(n,"A",r);
+    if(n.pos.A===100){n.winner="A";snlLocal=n;snlBusy=false;renderSnakesLadders(n,uid);finishLocal("A");return}
+    await sleep(650);r=await animateDice("Computer is rolling…");n.lastRoll=r;await animateSNLMove(n,"B",r);
+    if(n.pos.B===100)n.winner="B";n.last=n.winner?"Game over":"Your turn";snlLocal=n;snlBusy=false;renderSnakesLadders(n,uid);if(n.winner)finishLocal(n.winner);return;
+  }
+  const n=JSON.parse(JSON.stringify(st));const r=Math.floor(Math.random()*6)+1;let p=n.pos[myMark]+r;if(p>100)p=n.pos[myMark];if(SNL[p])p=SNL[p];n.pos[myMark]=p;n.lastRoll=r;if(p===100)n.winner=myMark;snlBusy=false;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");
+}
 
 // ---------- Penalty Shootout ----------
+let penaltyBusy=false,penaltyLocal=null;
 function renderPenalty(st,turn){
-  const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";const goal=document.createElement("div");goal.className="penalty-goal";goal.innerHTML='<div class="keeper">🧤</div><div class="ball">⚽</div>';[0,1,2].forEach(i=>{const z=document.createElement("button");z.className=`goal-zone z${i}`;z.setAttribute("aria-label",["Shoot left","Shoot center","Shoot right"][i]);z.onclick=()=>penaltyKick(st,turn,i);goal.appendChild(z)});b.appendChild(goal);const info=document.createElement("div");info.className="shootout-info";info.textContent=`Shots: You ${st.shots[myMark]||0}/5 • Opponent ${st.shots[myMark==="A"?"B":"A"]||0}/5`;b.appendChild(info);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`You ${st.scores[myMark]} • Opponent ${st.scores[myMark==="A"?"B":"A"]} • ${st.last}`)
+  const b=$("#gameBoard");b.className="game-board sports-wrap";b.innerHTML="";
+  if(botMode&&!penaltyLocal)penaltyLocal=JSON.parse(JSON.stringify(st));
+  const live=botMode?penaltyLocal:st;
+  const goal=document.createElement("div");goal.className="penalty-goal penalty-live";goal.innerHTML='<div class="keeper" id="penKeeper">🧤</div><div class="ball" id="penBall">⚽</div>';
+  [0,1,2].forEach(i=>{const z=document.createElement("button");z.className=`goal-zone z${i}`;z.disabled=penaltyBusy||!!live.winner;z.setAttribute("aria-label",["Shoot left","Shoot center","Shoot right"][i]);z.onclick=()=>penaltyKick(live,turn,i);goal.appendChild(z)});
+  b.appendChild(goal);
+  const info=document.createElement("div");info.className="shootout-info";info.textContent=`You ${live.scores.A} (${live.shots.A}/5) • Computer ${live.scores.B} (${live.shots.B}/5)`;b.appendChild(info);
+  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):(live.last||"Tap a goal area to shoot"));
 }
-async function penaltyKick(st,turn,lane){if(!canMove(turn)||st.winner||(st.shots[myMark]||0)>=5)return;const n=JSON.parse(JSON.stringify(st));const keeper=Math.floor(Math.random()*3);n.shots[myMark]=(n.shots[myMark]||0)+1;if(lane!==keeper){n.scores[myMark]++;n.last="GOAL!"}else n.last="SAVED!";
-  if(botMode){if((n.shots.B||0)<5){const botLane=Math.floor(Math.random()*3),youSave=Math.floor(Math.random()*3);n.shots.B++;if(botLane!==youSave)n.scores.B++}if(n.shots.A>=5&&n.shots.B>=5){if(n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";else {n.shots.A=0;n.shots.B=0;n.last="Draw — sudden death"}}renderState(n,uid);if(n.winner)finishLocal(n.winner);return}
-  if((n.shots.A||0)>=5&&(n.shots.B||0)>=5&&n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function animatePenalty(lane,keeperLane,reverse=false){
+  const ball=document.querySelector("#penBall"),keeper=document.querySelector("#penKeeper");if(!ball||!keeper)return;
+  const x=[-105,0,105][lane],kx=[-85,0,85][keeperLane];
+  keeper.style.transform=`translateX(${kx}px)`;
+  ball.style.transform=reverse?`translate(${x}px,120px) scale(.65)`:`translate(${x}px,-145px) scale(.65)`;
+}
+async function penaltyKick(st,turn,lane){
+  if(penaltyBusy||st.winner||(!botMode&&!canMove(turn)))return;penaltyBusy=true;
+  if(botMode){
+    const n=penaltyLocal||JSON.parse(JSON.stringify(st));
+    const keeper=Math.floor(Math.random()*3);animatePenalty(lane,keeper,false);await sleep(850);
+    n.shots.A++;if(lane!==keeper){n.scores.A++;n.last="GOAL!"}else n.last="SAVED!";
+    penaltyLocal=n;renderPenalty(n,uid);await sleep(700);
+    if(n.shots.A>=5&&n.shots.B>=5&&n.scores.A!==n.scores.B){n.winner=n.scores.A>n.scores.B?"A":"B"}
+    if(!n.winner&&n.shots.B<5){
+      setStatus("Computer is taking the shot…");await sleep(550);
+      const botLane=Math.floor(Math.random()*3),youDive=Math.floor(Math.random()*3);animatePenalty(botLane,youDive,true);await sleep(850);
+      n.shots.B++;if(botLane!==youDive){n.scores.B++;n.last="Computer scores"}else n.last="You saved it!";
+    }
+    if(n.shots.A>=5&&n.shots.B>=5){if(n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";else{n.shots={A:0,B:0};n.last="Draw — sudden death"}}
+    penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);if(n.winner)finishLocal(n.winner);return;
+  }
+  penaltyBusy=false;
+}
 
 // ---------- Reaction Tap ----------
-let reactionTimer=null,reactionCountdownTimer=null;
-function clearReactionTimers(){if(reactionTimer){clearTimeout(reactionTimer);reactionTimer=null}if(reactionCountdownTimer){clearInterval(reactionCountdownTimer);reactionCountdownTimer=null}}
+let reactionTimer=null,reactionCountdownTimer=null,reactionBotTimer=null,reactionLocal=null,reactionLocked=false;
+function clearReactionTimers(){if(reactionTimer)clearTimeout(reactionTimer);if(reactionCountdownTimer)clearInterval(reactionCountdownTimer);if(reactionBotTimer)clearTimeout(reactionBotTimer);reactionTimer=reactionCountdownTimer=reactionBotTimer=null}
 function reactionAvg(a=[]){if(!a.length)return 0;return Math.round(a.reduce((x,y)=>x+y,0)/a.length)}
 function renderReaction(st,turn){
-  const b=$("#gameBoard");b.className="game-board reaction-wrap";b.innerHTML="";const q=document.createElement("button");q.className=`reaction-btn phase-${st.phase}`;q.disabled=!!st.winner;q.textContent=st.phase==="countdown"?String(st.countdown||3):st.phase==="wait"?"WAIT…":st.phase==="go"?"GO!":"NEXT";q.onclick=()=>reactionTap(st,turn);b.appendChild(q);const stats=document.createElement("div");stats.className="reaction-stats";stats.textContent=`You ${st.scores[myMark]} • Opponent ${st.scores[myMark==="A"?"B":"A"]} • Avg ${reactionAvg(st.times?.[myMark])||"—"} ms`;b.appendChild(stats);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):(st.last||"Get ready"));if(botMode&&!reactionTimer&&!st.winner&&st.phase==="countdown")startReactionRound(st)
+  const b=$("#gameBoard");b.className="game-board reaction-wrap";b.innerHTML="";
+  if(botMode&&!reactionLocal)reactionLocal=JSON.parse(JSON.stringify(st));
+  const live=botMode?reactionLocal:st;
+  const q=document.createElement("button");q.className=`reaction-btn phase-${live.phase}`;q.disabled=!!live.winner;q.textContent=live.phase==="countdown"?String(live.countdown||3):live.phase==="wait"?"WAIT…":live.phase==="go"?"TAP!":"READY";q.onclick=()=>reactionTap(live,turn);b.appendChild(q);
+  const stats=document.createElement("div");stats.className="reaction-stats";stats.textContent=`You ${live.scores.A} • Computer ${live.scores.B} • Avg ${reactionAvg(live.times.A)||"—"} ms`;b.appendChild(stats);
+  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):(live.last||"Get ready"));
+  if(botMode&&!reactionTimer&&!reactionCountdownTimer&&!reactionBotTimer&&!live.winner&&live.phase==="countdown")startReactionRound(live);
 }
-function startReactionRound(st){clearReactionTimers();let live=st;live.phase="countdown";live.countdown=3;renderReactionFrame(live);reactionCountdownTimer=setInterval(()=>{live.countdown--;if(live.countdown>0)renderReactionFrame(live);else{clearInterval(reactionCountdownTimer);reactionCountdownTimer=null;live.phase="wait";renderReactionFrame(live);const delay=900+Math.floor(Math.random()*2200);reactionTimer=setTimeout(()=>{reactionTimer=null;live.phase="go";live.goAt=performance.now();renderReactionFrame(live);if(botMode){const botTime=220+Math.floor(Math.random()*360);setTimeout(()=>{if(live.phase!=="go")return;live.times.B.push(botTime);live.scores.B++;live.last=`Computer: ${botTime} ms`;reactionFinishPoint(live)},botTime)}},delay)}},700)}
-function renderReactionFrame(st){const btn=document.querySelector(".reaction-btn");if(!btn)return;btn.className=`reaction-btn phase-${st.phase}`;btn.textContent=st.phase==="countdown"?String(st.countdown):st.phase==="wait"?"WAIT…":"GO!";const ss=document.querySelector(".reaction-stats");if(ss)ss.textContent=`You ${st.scores.A} • Computer ${st.scores.B} • Avg ${reactionAvg(st.times.A)||"—"} ms`;setStatus(st.last||"Get ready")}
-function reactionTap(st,turn){if(st.winner)return;if(!botMode&&!canMove(turn))return;if(st.phase!=="go"){if(st.phase==="wait"){const n=JSON.parse(JSON.stringify(st));const enemy=myMark==="A"?"B":"A";n.scores[enemy]++;n.last="False start — opponent gets the point";reactionFinishPoint(n)}return}const n=JSON.parse(JSON.stringify(st));const ms=Math.max(1,Math.round(performance.now()-st.goAt));n.times[myMark].push(ms);n.scores[myMark]++;n.last=`Your reaction: ${ms} ms`;clearReactionTimers();reactionFinishPoint(n)}
-function reactionFinishPoint(n){clearReactionTimers();if(n.scores.A>=5||n.scores.B>=5){n.winner=n.scores.A>n.scores.B?"A":"B";renderReaction(n,uid);finishLocal(n.winner);return}n.round++;n.phase="countdown";n.countdown=3;if(botMode){setTimeout(()=>startReactionRound(n),700)}else writeState(n,nextUid(),"playing")}
+function startReactionRound(st){
+  clearReactionTimers();reactionLocked=false;reactionLocal=st;st.phase="countdown";st.countdown=3;renderReactionFrame(st);
+  reactionCountdownTimer=setInterval(()=>{
+    st.countdown--;
+    if(st.countdown>0){renderReactionFrame(st);return}
+    clearInterval(reactionCountdownTimer);reactionCountdownTimer=null;st.phase="wait";st.last="Wait for TAP!";renderReactionFrame(st);
+    reactionTimer=setTimeout(()=>{
+      reactionTimer=null;st.phase="go";st.goAt=performance.now();st.last="";renderReactionFrame(st);
+      const botTime=260+Math.floor(Math.random()*340);
+      reactionBotTimer=setTimeout(()=>{if(st.phase!=="go"||reactionLocked)return;reactionLocked=true;st.times.B.push(botTime);st.scores.B++;st.last=`Computer: ${botTime} ms`;finishReactionRound(st)},botTime);
+    },900+Math.floor(Math.random()*2200));
+  },650);
+}
+function renderReactionFrame(st){
+  const btn=document.querySelector(".reaction-btn");if(!btn)return;btn.className=`reaction-btn phase-${st.phase}`;btn.textContent=st.phase==="countdown"?String(st.countdown):st.phase==="wait"?"WAIT…":"TAP!";
+  const ss=document.querySelector(".reaction-stats");if(ss)ss.textContent=`You ${st.scores.A} • Computer ${st.scores.B} • Avg ${reactionAvg(st.times.A)||"—"} ms`;setStatus(st.last||"Get ready");
+}
+function reactionTap(st,turn){
+  if(st.winner||reactionLocked)return;
+  if(st.phase==="countdown"||st.phase==="wait"){
+    reactionLocked=true;st.scores.B++;st.last="Too early — Computer gets the point";finishReactionRound(st);return;
+  }
+  if(st.phase!=="go")return;
+  reactionLocked=true;clearTimeout(reactionBotTimer);reactionBotTimer=null;
+  const ms=Math.max(1,Math.round(performance.now()-st.goAt));st.times.A.push(ms);st.scores.A++;st.last=`Your reaction: ${ms} ms`;finishReactionRound(st);
+}
+function finishReactionRound(st){
+  clearReactionTimers();if(st.scores.A>=5||st.scores.B>=5){st.winner=st.scores.A>st.scores.B?"A":"B";reactionLocal=st;renderReaction(st,uid);finishLocal(st.winner);return}
+  st.round++;st.phase="countdown";st.countdown=3;reactionLocal=st;setTimeout(()=>{if(currentGame?.id==="reaction"&&!gameFinished)startReactionRound(st)},900);renderReaction(st,uid);
+}
 
 // ---------- Puzzle Race ----------
 function renderPuzzle(st,turn){const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";const board=st.boards[myMark];const g=document.createElement("div");g.className="puzzle-grid";board.forEach((v,i)=>{const q=document.createElement("button");q.className="puzzle-cell";q.textContent=v||"";q.onclick=()=>puzzleMove(st,i);g.appendChild(q)});b.appendChild(g);setStatus(st.winner?(st.winner===myMark?"You win!":"Opponent wins"):`Moves: ${st.moves[myMark]||0}`)}
@@ -1737,6 +1952,13 @@ function finishLocal(winner){
 $("#leaveBtn").onclick=leaveRoom;
 async function leaveRoom(){
   clearAutoRematch();
+  clearSnakeTimer();
+  clearPong();
+  clearAir();
+  clearReactionTimers();
+  snlLocal=null; snlBusy=false;
+  penaltyLocal=null; penaltyBusy=false;
+  reactionLocal=null;
   clearSnakeTimer();
   clearReactionTimers();
   clearCheckersPlan();
