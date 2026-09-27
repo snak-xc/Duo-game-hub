@@ -1375,14 +1375,83 @@ async function mathAnswer(st,turn,val){
 }
 
 // ---------- Number Guess Duel ----------
-function renderNumberGuess(st,turn){
-  const b=$("#gameBoard");b.className="game-board text-game";b.innerHTML="";const x=document.createElement("input");x.type="number";x.min="1";x.max="100";x.placeholder="1 - 100";x.className="game-input";b.appendChild(x);
-  const q=document.createElement("button");q.className="primary mini";q.textContent="Guess";q.onclick=()=>numberGuess(st,turn,Number(x.value));b.appendChild(q);
-  setStatus(st.winner?(st.winner===myMark?"You found it!":"Opponent found it"):`${canMove(turn)?"Your turn":"Opponent's turn"} • ${st.hint||"1 - 100"}`);
+let numberLocal=null, numberBotBusy=false;
+function ensureNumberState(st){
+  if(!st.history)st.history={A:[],B:[]};
+  if(!st.attempts)st.attempts={A:0,B:0};
+  if(!st.bounds)st.bounds={B:{lo:1,hi:100}};
+  if(!st.last)st.last="Guess a number from 1 to 100";
+  return st;
 }
-async function numberGuess(st,turn,v){if(!canMove(turn)||st.winner||v<1||v>100)return;const n=JSON.parse(JSON.stringify(st));n.lastGuess=v;if(v===n.target)n.winner=myMark;else n.hint=v<n.target?`Higher than ${v}`:`Lower than ${v}`;await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing")}
+function renderNumberGuess(st,turn){
+  const b=$("#gameBoard");b.className="game-board number-duel";b.innerHTML="";
+  if(botMode&&!numberLocal)numberLocal=ensureNumberState(JSON.parse(JSON.stringify(st)));
+  const live=ensureNumberState(botMode?numberLocal:st);
 
+  const head=document.createElement("div");head.className="number-head";
+  head.innerHTML=`
+    <div class="number-range">🎯 Secret number: <b>1 – 100</b></div>
+    <div class="number-score">
+      <span>You: <b>${live.attempts.A||0}</b> attempts</span>
+      <span>${botMode?"Computer":"Opponent"}: <b>${live.attempts.B||0}</b></span>
+    </div>`;
+  b.appendChild(head);
 
+  const hint=document.createElement("div");hint.className=`number-hint ${live.lastHintType||""}`;
+  hint.textContent=live.winner
+    ? (live.winner==="A"?"🎉 You found the number!":"🤖 Computer found the number!")
+    : (live.hint||"Enter your guess");
+  b.appendChild(hint);
+
+  const inputWrap=document.createElement("div");inputWrap.className="number-input-row";
+  const x=document.createElement("input");x.type="number";x.inputMode="numeric";x.min="1";x.max="100";x.placeholder="1 - 100";x.className="game-input number-input";
+  const q=document.createElement("button");q.className="primary mini";q.textContent="Guess";q.disabled=!!live.winner||numberBotBusy||(!botMode&&!canMove(turn));
+  q.onclick=()=>numberGuess(live,turn,Number(x.value));
+  x.addEventListener("keydown",e=>{if(e.key==="Enter")q.click()});
+  inputWrap.append(x,q);b.appendChild(inputWrap);
+
+  const hist=document.createElement("div");hist.className="number-history";
+  hist.innerHTML=`
+    <div><h4>You</h4><div>${(live.history.A||[]).map(v=>`<span>${v}</span>`).join("")||"<small>No guesses yet</small>"}</div></div>
+    <div><h4>${botMode?"Computer":"Opponent"}</h4><div>${(live.history.B||[]).map(v=>`<span>${v}</span>`).join("")||"<small>No guesses yet</small>"}</div></div>`;
+  b.appendChild(hist);
+  setStatus(live.winner?(live.winner==="A"?"You win!":"Computer wins"):(live.last||"Your turn"));
+  if(!live.winner&&!numberBotBusy)setTimeout(()=>x.focus(),80);
+}
+async function numberGuess(st,turn,v){
+  if(st.winner||!Number.isInteger(v)||v<1||v>100||numberBotBusy||(!botMode&&!canMove(turn)))return;
+  if(!botMode){
+    const n=ensureNumberState(JSON.parse(JSON.stringify(st)));
+    n.attempts[myMark]=(n.attempts[myMark]||0)+1;n.history[myMark].push(v);
+    if(v===n.target)n.winner=myMark;
+    else n.hint=v<n.target?`⬆️ Higher than ${v}`:`⬇️ Lower than ${v}`;
+    await writeState(n,n.winner?uid:nextUid(),n.winner?"finished":"playing");return;
+  }
+
+  const n=ensureNumberState(numberLocal||JSON.parse(JSON.stringify(st)));
+  numberBotBusy=true;
+  n.attempts.A++;n.history.A.push(v);
+  if(v===n.target){
+    n.winner="A";n.hint=`✅ ${v} is correct!`;n.lastHintType="correct";numberLocal=n;numberBotBusy=false;renderNumberGuess(n,uid);finishLocal("A");return;
+  }
+  n.hint=v<n.target?`⬆️ Higher than ${v}`:`⬇️ Lower than ${v}`;
+  n.lastHintType=v<n.target?"higher":"lower";n.last="Computer is thinking…";
+  numberLocal=n;renderNumberGuess(n,uid);
+  await sleep(700);
+
+  // Computer uses binary-search style guessing with the clues it has learned.
+  const bd=n.bounds.B||{lo:1,hi:100};
+  const botGuess=Math.floor((bd.lo+bd.hi)/2);
+  n.attempts.B++;n.history.B.push(botGuess);
+  if(botGuess===n.target){
+    n.winner="B";n.hint=`🤖 Computer guessed ${botGuess} correctly`;n.lastHintType="correct";
+    numberLocal=n;numberBotBusy=false;renderNumberGuess(n,uid);finishLocal("B");return;
+  }
+  if(botGuess<n.target)bd.lo=botGuess+1;else bd.hi=botGuess-1;
+  n.bounds.B=bd;
+  n.last=`Computer guessed ${botGuess} • Your turn`;
+  numberLocal=n;numberBotBusy=false;renderNumberGuess(n,uid);
+}
 // ---------- Snake Duel ----------
 let snakeTimer=null, snakeLiveState=null;
 function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null}
@@ -1594,7 +1663,7 @@ async function rollSNL(st,turn){
 }
 
 // ---------- Penalty Shootout ----------
-let penaltyBusy=false,penaltyLocal=null;
+let penaltyBusy=false,penaltyLocal=null,penaltyBotShotTimer=null;
 const PK_TARGETS=[
   {x:18,y:22,label:"Top left"},
   {x:18,y:70,label:"Bottom left"},
@@ -1602,21 +1671,16 @@ const PK_TARGETS=[
   {x:82,y:22,label:"Top right"},
   {x:82,y:70,label:"Bottom right"}
 ];
-
+function clearPenaltyTimer(){if(penaltyBotShotTimer){clearTimeout(penaltyBotShotTimer);penaltyBotShotTimer=null}}
 function penaltyEnsure(st){
-  const n=st;
-  if(!n.phase)n.phase="shoot";
-  if(typeof n.botTarget!=="number")n.botTarget=-1;
-  if(!n.results)n.results={A:[],B:[]};
-  return n;
+  if(!st.phase)st.phase="shoot";
+  if(!st.results)st.results={A:[],B:[]};
+  if(typeof st.keeperX!=="number")st.keeperX=50;
+  return st;
 }
 function penaltyDots(arr,count){
-  let html="";
-  const total=Math.max(5,count,arr.length);
-  for(let i=0;i<total;i++){
-    const v=arr[i];
-    html+=`<span class="pk-dot ${v==="goal"?"goal":v==="save"?"save":""}">${v==="goal"?"●":v==="save"?"×":"○"}</span>`;
-  }
+  let html="";const total=Math.max(5,count,arr.length);
+  for(let i=0;i<total;i++){const v=arr[i];html+=`<span class="pk-dot ${v==="goal"?"goal":v==="save"?"save":""}">${v==="goal"?"●":v==="save"?"×":"○"}</span>`}
   return html;
 }
 function renderPenalty(st,turn){
@@ -1625,116 +1689,95 @@ function renderPenalty(st,turn){
   const live=penaltyEnsure(botMode?penaltyLocal:st);
 
   const top=document.createElement("div");top.className="pk-top";
-  top.innerHTML=`
-    <div class="pk-mode">${live.phase==="defend"?"🧤 DEFEND":"⚽ SHOOT"}</div>
-    <div class="pk-scoreline"><b>You ${live.scores.A}</b><span>–</span><b>${live.scores.B} Computer</b></div>
-    <div class="pk-round">Shots: ${live.shots.A} / ${live.shots.B}</div>
-  `;
+  top.innerHTML=`<div class="pk-mode">${live.phase==="defend"?"🧤 DEFEND":"⚽ SHOOT"}</div>
+  <div class="pk-scoreline"><b>You ${live.scores.A}</b><span>–</span><b>${live.scores.B} Computer</b></div>
+  <div class="pk-round">Shots: ${live.shots.A} / ${live.shots.B}</div>`;
   b.appendChild(top);
 
-  const goal=document.createElement("div");goal.className=`pk-goal ${live.phase}`;
-  goal.innerHTML=`
-    <div class="pk-net"></div>
-    <div class="pk-keeper" id="pkKeeper">
+  const goal=document.createElement("div");goal.className=`pk-goal ${live.phase}`;goal.id="pkGoal";
+  goal.innerHTML=`<div class="pk-net"></div>
+    <div class="pk-keeper ${live.phase==="defend"?"user-controlled":""}" id="pkKeeper" style="left:${live.keeperX}%">
       <span class="pk-head"></span><span class="pk-body"></span><span class="pk-arm left"></span><span class="pk-arm right"></span>
     </div>
-    <div class="pk-ball" id="pkBall">⚽</div>
-    <div class="pk-result" id="pkResult"></div>
-  `;
+    <div class="pk-ball" id="pkBall">⚽</div><div class="pk-result" id="pkResult"></div>`;
 
-  PK_TARGETS.forEach((t,i)=>{
-    const z=document.createElement("button");
-    z.className=`pk-target t${i}`;
-    z.style.left=`${t.x}%`; z.style.top=`${t.y}%`;
-    z.disabled=penaltyBusy||!!live.winner;
-    z.setAttribute("aria-label",live.phase==="defend"?`Dive ${t.label}`:`Shoot ${t.label}`);
-    z.innerHTML=`<span>${live.phase==="defend"?"🧤":"＋"}</span>`;
-    z.onclick=()=>live.phase==="defend"?penaltyDefend(live,i):penaltyShoot(live,i);
-    goal.appendChild(z);
-  });
+  if(live.phase==="shoot"){
+    PK_TARGETS.forEach((t,i)=>{
+      const z=document.createElement("button");z.className=`pk-target t${i}`;z.style.left=`${t.x}%`;z.style.top=`${t.y}%`;
+      z.disabled=penaltyBusy||!!live.winner;z.setAttribute("aria-label",`Shoot ${t.label}`);z.innerHTML="<span>＋</span>";
+      z.onclick=()=>penaltyShoot(live,i);goal.appendChild(z);
+    });
+  }else{
+    // Drag/touch anywhere in the goal to control the goalkeeper.
+    const moveKeeper=e=>{
+      if(penaltyBusy||live.winner)return;
+      const r=goal.getBoundingClientRect();
+      const x=Math.max(9,Math.min(91,((e.clientX-r.left)/r.width)*100));
+      live.keeperX=x;
+      const k=document.querySelector("#pkKeeper");if(k)k.style.left=`${x}%`;
+    };
+    goal.addEventListener("pointerdown",e=>{goal.setPointerCapture?.(e.pointerId);moveKeeper(e)});
+    goal.addEventListener("pointermove",e=>{if(e.buttons||e.pointerType==="touch")moveKeeper(e)});
+  }
   b.appendChild(goal);
 
   const panel=document.createElement("div");panel.className="pk-panel";
-  panel.innerHTML=`
-    <div><span>You</span><div class="pk-dots">${penaltyDots(live.results.A,live.shots.A)}</div></div>
-    <div><span>Computer</span><div class="pk-dots">${penaltyDots(live.results.B,live.shots.B)}</div></div>
-  `;
+  panel.innerHTML=`<div><span>You</span><div class="pk-dots">${penaltyDots(live.results.A,live.shots.A)}</div></div>
+  <div><span>Computer</span><div class="pk-dots">${penaltyDots(live.results.B,live.shots.B)}</div></div>`;
   b.appendChild(panel);
 
   const hint=document.createElement("div");hint.className="pk-hint";
-  hint.textContent=live.winner
-    ? (live.winner==="A"?"You win the shootout!":"Computer wins the shootout")
-    : live.phase==="defend"
-      ? "Computer is shooting — tap where you want the goalkeeper to dive"
-      : "Tap one of the 5 target points to shoot";
-  b.appendChild(hint);
-  setStatus(live.last||hint.textContent);
-}
+  hint.textContent=live.winner?(live.winner==="A"?"You win the shootout!":"Computer wins the shootout")
+    :live.phase==="defend"?"Drag the goalkeeper left/right — computer will shoot automatically"
+    :"Tap one of the 5 target points to shoot";
+  b.appendChild(hint);setStatus(live.last||hint.textContent);
 
-function penaltyAnimate(target,keeperTarget,mode,result){
-  const ball=document.querySelector("#pkBall"),keeper=document.querySelector("#pkKeeper"),res=document.querySelector("#pkResult");
-  if(!ball||!keeper)return;
-  const bt=PK_TARGETS[target],kt=PK_TARGETS[keeperTarget];
-  ball.style.setProperty("--bx",`${bt.x}%`);
-  ball.style.setProperty("--by",`${bt.y}%`);
-  ball.classList.add("fly");
-  keeper.style.setProperty("--kx",`${kt.x}%`);
-  keeper.style.setProperty("--ky",`${Math.min(74,Math.max(28,kt.y))}%`);
-  keeper.classList.add("dive");
-  if(mode==="defend")goalkeeperFlash(keeperTarget);
-  setTimeout(()=>{
-    if(res){res.textContent=result==="goal"?"GOAL!":"SAVED!";res.className=`pk-result show ${result}`;}
-  },520);
-}
-function goalkeeperFlash(i){
-  document.querySelectorAll(".pk-target").forEach((x,j)=>x.classList.toggle("chosen",j===i));
-}
-function penaltyCheckWinner(n){
-  // After 5 each, continue sudden death until both have taken the same number of kicks and scores differ.
-  if(n.shots.A>=5 && n.shots.B>=5 && n.shots.A===n.shots.B && n.scores.A!==n.scores.B){
-    n.winner=n.scores.A>n.scores.B?"A":"B";
+  if(botMode&&live.phase==="defend"&&!live.winner&&!penaltyBusy&&!penaltyBotShotTimer){
+    penaltyBotShotTimer=setTimeout(()=>penaltyComputerShot(live),1500);
   }
 }
+function penaltyAnimateShot(target,keeperX,result){
+  const ball=document.querySelector("#pkBall"),keeper=document.querySelector("#pkKeeper"),res=document.querySelector("#pkResult");
+  if(!ball||!keeper)return;const bt=PK_TARGETS[target];
+  ball.style.setProperty("--bx",`${bt.x}%`);ball.style.setProperty("--by",`${bt.y}%`);ball.classList.add("fly");
+  keeper.classList.add("dive-live");
+  if(res)setTimeout(()=>{res.textContent=result==="goal"?"GOAL!":"SAVED!";res.className=`pk-result show ${result}`},460);
+}
+function penaltyCheckWinner(n){
+  if(n.shots.A>=5&&n.shots.B>=5&&n.shots.A===n.shots.B&&n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";
+}
 async function penaltyShoot(st,target){
-  if(penaltyBusy||st.winner||st.phase!=="shoot")return;
-  penaltyBusy=true;
+  if(penaltyBusy||st.winner||st.phase!=="shoot")return;penaltyBusy=true;clearPenaltyTimer();
   const n=penaltyLocal||penaltyEnsure(JSON.parse(JSON.stringify(st)));
-  const keeper=Math.floor(Math.random()*PK_TARGETS.length);
-  const saved=target===keeper;
-  penaltyAnimate(target,keeper,"shoot",saved?"save":"goal");
-  n.shots.A++;
-  n.results.A.push(saved?"save":"goal");
-  if(!saved)n.scores.A++;
+  const keeperTarget=Math.floor(Math.random()*PK_TARGETS.length),keeperX=PK_TARGETS[keeperTarget].x;
+  const saved=target===keeperTarget;
+  const k=document.querySelector("#pkKeeper");if(k)k.style.left=`${keeperX}%`;
+  penaltyAnimateShot(target,keeperX,saved?"save":"goal");
+  n.shots.A++;n.results.A.push(saved?"save":"goal");if(!saved)n.scores.A++;
   n.last=saved?"SAVED by the computer!":"GOAL!";
-  await sleep(1200);
-  penaltyCheckWinner(n);
+  await sleep(1150);penaltyCheckWinner(n);
   if(n.winner){penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);finishLocal(n.winner);return}
-  n.phase="defend";
-  n.botTarget=Math.floor(Math.random()*PK_TARGETS.length);
-  n.last="Computer turn — choose your dive";
-  penaltyLocal=n; penaltyBusy=false; renderPenalty(n,uid);
+  n.phase="defend";n.keeperX=50;n.last="Move your goalkeeper — computer is preparing to shoot";
+  penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);
 }
-
-async function penaltyDefend(st,diveTarget){
-  if(penaltyBusy||st.winner||st.phase!=="defend")return;
-  penaltyBusy=true;
-  const n=penaltyLocal||penaltyEnsure(JSON.parse(JSON.stringify(st)));
-  const shot=(n.botTarget>=0?n.botTarget:Math.floor(Math.random()*PK_TARGETS.length));
-  const saved=diveTarget===shot;
-  penaltyAnimate(shot,diveTarget,"defend",saved?"save":"goal");
-  n.shots.B++;
-  n.results.B.push(saved?"save":"goal");
-  if(!saved)n.scores.B++;
+async function penaltyComputerShot(st){
+  clearPenaltyTimer();if(penaltyBusy||st.winner||st.phase!=="defend")return;penaltyBusy=true;
+  const n=penaltyLocal||st;
+  const target=Math.floor(Math.random()*PK_TARGETS.length);
+  const shotX=PK_TARGETS[target].x;
+  const keeperX=n.keeperX||50;
+  // A save is based on where the player actually positioned the keeper.
+  const saved=Math.abs(keeperX-shotX)<=18;
+  penaltyAnimateShot(target,keeperX,saved?"save":"goal");
+  n.shots.B++;n.results.B.push(saved?"save":"goal");if(!saved)n.scores.B++;
   n.last=saved?"Great save!":"Computer scores";
-  await sleep(1200);
-  penaltyCheckWinner(n);
+  await sleep(1150);penaltyCheckWinner(n);
   if(n.winner){penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);finishLocal(n.winner);return}
-  n.phase="shoot"; n.botTarget=-1;
+  n.phase="shoot";n.keeperX=50;
   n.last=(n.shots.A>=5&&n.shots.B>=5&&n.scores.A===n.scores.B)?"Sudden death — your shot":"Your turn to shoot";
-  penaltyLocal=n; penaltyBusy=false; renderPenalty(n,uid);
+  penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);
 }
-async function penaltyKick(st,turn,lane){ return penaltyShoot(st,lane); }
-
+async function penaltyKick(st,turn,lane){return penaltyShoot(st,lane)}
 // ---------- Reaction Tap ----------
 let reactionTimer=null,reactionCountdownTimer=null,reactionBotTimer=null,reactionLocal=null,reactionLocked=false;
 function clearReactionTimers(){if(reactionTimer)clearTimeout(reactionTimer);if(reactionCountdownTimer)clearInterval(reactionCountdownTimer);if(reactionBotTimer)clearTimeout(reactionBotTimer);reactionTimer=reactionCountdownTimer=reactionBotTimer=null}
@@ -2062,7 +2105,8 @@ async function leaveRoom(){
   clearAir();
   clearReactionTimers();
   snlLocal=null; snlBusy=false;
-  penaltyLocal=null; penaltyBusy=false;
+  penaltyLocal=null; penaltyBusy=false; clearPenaltyTimer();
+  numberLocal=null; numberBotBusy=false;
   reactionLocal=null;
   clearSnakeTimer();
   clearReactionTimers();
