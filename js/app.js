@@ -133,24 +133,67 @@ function renderGames(){
 async function startMatch(game){
   currentGame=game; botMode=false; gameFinished=false;
   $("#matchGameTitle").textContent=game.name;
-  $("#matchText").textContent="Looking for another online player…";
+  $("#matchText").textContent="Checking waiting players…";
   show("matchView");
+
   const qRef=ref(db,`queues/${game.id}`);
-  const snap=await get(qRef);
-  let found=null;
-  snap.forEach(c=>{ if(!found && c.key!==uid) found={uid:c.key,...c.val()}; });
-  if(found){
-    await createRoomWith(found.uid, found.name);
-    await remove(ref(db,`queues/${game.id}/${found.uid}`));
-  }else{
-    await set(ref(db,`queues/${game.id}/${uid}`),{name:displayName,joinedAt:Date.now()});
-    onDisconnect(ref(db,`queues/${game.id}/${uid}`)).remove();
-    queueUnsub=onValue(ref(db,`matches/${uid}`),async s=>{
-      if(!s.exists())return;
-      const m=s.val(); await remove(ref(db,`matches/${uid}`)); joinRoom(m.roomId,m.opponentUid,m.opponentName,m.mark);
+  const myQ=ref(db,`queues/${game.id}/${uid}`);
+  await set(myQ,{name:displayName,joinedAt:Date.now()});
+  onDisconnect(myQ).remove();
+
+  if(queueUnsub){queueUnsub();queueUnsub=null}
+  queueUnsub=onValue(qRef,snap=>{
+    const players=[];
+    snap.forEach(ch=>{
+      if(ch.key!==uid){
+        const v=ch.val()||{};
+        players.push({uid:ch.key,name:v.name||"Player",joinedAt:v.joinedAt||0});
+      }
     });
-  }
+    players.sort((a,b)=>a.joinedAt-b.joinedAt);
+    renderWaitingPlayers(players);
+  });
+
+  // A player that somebody else selects receives the room invite here.
+  onValue(ref(db,`matches/${uid}`),async ms=>{
+    if(!ms.exists())return;
+    const m=ms.val();
+    await remove(ref(db,`matches/${uid}`));
+    joinRoom(m.roomId,m.opponentUid,m.opponentName,m.mark);
+  },{onlyOnce:false});
 }
+
+function renderWaitingPlayers(players){
+  let list=document.querySelector("#waitingPlayerList");
+  if(!list){
+    list=document.createElement("div");
+    list.id="waitingPlayerList";
+    list.className="waiting-player-list";
+    const anchor=$("#matchText");
+    anchor.insertAdjacentElement("afterend",list);
+  }
+  list.innerHTML="";
+  if(!players.length){
+    $("#matchText").textContent="No other player is waiting yet…";
+    const d=document.createElement("div");d.className="waiting-empty";
+    d.textContent="Stay here and wait, or choose Computer.";
+    list.appendChild(d);return;
+  }
+  $("#matchText").textContent=players.length===1?"1 player is waiting — tap to play":`${players.length} players are waiting — choose one`;
+  players.forEach(p=>{
+    const b=document.createElement("button");b.className="waiting-player-card";
+    b.innerHTML=`<span class="waiting-avatar">👤</span><span><b>${escapeHtml(p.name)}</b><small>Waiting for ${currentGame?.name||"game"}</small></span><span class="waiting-play">Play ›</span>`;
+    b.onclick=async()=>{
+      b.disabled=true;
+      await remove(ref(db,`queues/${currentGame.id}/${uid}`)).catch(()=>{});
+      await remove(ref(db,`queues/${currentGame.id}/${p.uid}`)).catch(()=>{});
+      await createRoomWith(p.uid,p.name);
+    };
+    list.appendChild(b);
+  });
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+
 async function createRoomWith(otherUid, otherName){
   roomId=push(ref(db,"rooms")).key;
   const first=Math.random()<.5 ? uid : otherUid;
@@ -241,11 +284,11 @@ function initialState(game){
   if(game==="quiz") return {index:Math.floor(Math.random()*QUIZ_BANK.length),scores:{A:0,B:0},winner:null};
   if(game==="math") return makeMathState();
   if(game==="numberguess") return {target:Math.floor(Math.random()*100)+1,lastGuess:null,hint:"1 - 100",winner:null};
-  if(game==="snake") return {bodies:{A:[216,217,218],B:[39,38,37]},dirs:{A:"left",B:"right"},food:120,scores:{A:0,B:0},winner:null};
+  if(game==="snake") return {bodies:{A:[468,469,470,471],B:[107,106,105,104]},dirs:{A:"left",B:"right"},food:286,scores:{A:0,B:0},winner:null};
   if(game==="pong") return {ballLane:1,rally:0,scores:{A:0,B:0},winner:null,last:"Move paddle to the ball lane"};
   if(game==="airhockey") return {scores:{A:0,B:0},round:1,puckLane:1,strikerLane:{A:1,B:1},last:"Drag your striker, then shoot",winner:null};
   if(game==="snakesladders") return {pos:{A:1,B:1},lastRoll:null,last:"Roll the dice",winner:null};
-  if(game==="penalty") return {round:1,scores:{A:0,B:0},shots:{A:0,B:0},last:"Choose a corner",winner:null};
+  if(game==="penalty") return {round:1,scores:{A:0,B:0},shots:{A:0,B:0},results:{A:[],B:[]},phase:"shoot",owner:"A",keeperX:50,keeperY:55,last:"Choose a target",winner:null};
   if(game==="reaction") return {round:1,phase:"countdown",countdown:3,readyAt:0,goAt:0,scores:{A:0,B:0},times:{A:[],B:[]},last:"",winner:null};
   if(game==="puzzle"){
     const p=shufflePuzzle();
@@ -1565,80 +1608,106 @@ async function numberGuess(st,turn,v){
   numberLocal=n;numberBotBusy=false;renderNumberGuess(n,uid);
 }
 // ---------- Snake Duel ----------
-let snakeTimer=null, snakeLiveState=null;
-function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null}
-function snakeNext16(pos,dir){let r=Math.floor(pos/16),c=pos%16;if(dir==="up")r=(r+15)%16;if(dir==="down")r=(r+1)%16;if(dir==="left")c=(c+15)%16;if(dir==="right")c=(c+1)%16;return r*16+c}
+let snakeTimer=null, snakeLiveState=null, snakeOnlineBusy=false;
+const SNAKE_N=24;
+function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null;snakeOnlineBusy=false}
+function snakeNextN(pos,dir){
+  let r=Math.floor(pos/SNAKE_N),c=pos%SNAKE_N;
+  if(dir==="up")r=(r+SNAKE_N-1)%SNAKE_N;if(dir==="down")r=(r+1)%SNAKE_N;
+  if(dir==="left")c=(c+SNAKE_N-1)%SNAKE_N;if(dir==="right")c=(c+1)%SNAKE_N;
+  return r*SNAKE_N+c;
+}
 function snakeOpposite(a,b){return (a==="up"&&b==="down")||(a==="down"&&b==="up")||(a==="left"&&b==="right")||(a==="right"&&b==="left")}
+function snakeNormalize(st){
+  if(!st.bodies||Math.max(...(st.bodies.A||[0]),...(st.bodies.B||[0]))>=SNAKE_N*SNAKE_N){
+    st.bodies={A:[468,469,470,471],B:[107,106,105,104]};
+  }
+  if(!st.dirs)st.dirs={A:"left",B:"right"};
+  if(typeof st.food!=="number"||st.food>=SNAKE_N*SNAKE_N)st.food=286;
+  if(!st.scores)st.scores={A:0,B:0};
+  return st;
+}
 function snakeSpawnFood(st){
-  const empty=[...Array(256).keys()].filter(i=>!st.bodies.A.includes(i)&&!st.bodies.B.includes(i));
+  const max=SNAKE_N*SNAKE_N,used=new Set([...(st.bodies.A||[]),...(st.bodies.B||[])]);
+  const empty=[];for(let i=0;i<max;i++)if(!used.has(i))empty.push(i);
   return empty[Math.floor(Math.random()*empty.length)]??0;
 }
-function renderSnake(st,turn){
-  const b=$("#gameBoard");b.className="game-board snake-duel-wrap";b.innerHTML="";
-  if(botMode){
-    if(!snakeLiveState)snakeLiveState=JSON.parse(JSON.stringify(st));
-    const g=document.createElement("div");g.className="snake-grid snake-live snake-grid-16";
-    for(let i=0;i<256;i++){const cell=document.createElement("div");cell.className="snake-cell";g.appendChild(cell)}
-    b.appendChild(g);
-    const ctl=document.createElement("div");ctl.className="snake-controls snake-dpad";
-    [["up","↑"],["left","←"],["down","↓"],["right","→"]].forEach(([d,t])=>{
-      const q=document.createElement("button");q.textContent=t;q.setAttribute("aria-label",d);
-      q.onclick=()=>{if(!snakeLiveState)return;const cur=snakeLiveState.dirs.A;if(!snakeOpposite(cur,d))snakeLiveState.dirs.A=d};
-      ctl.appendChild(q);
-    });
-    b.appendChild(ctl);
-    renderSnakeFrame(snakeLiveState);
-    if(!snakeTimer&&!snakeLiveState.winner){
-      snakeTimer=setInterval(()=>{
-        if(currentGame?.id!=="snake"||gameFinished||!snakeLiveState){clearSnakeTimer();return}
-        snakeLiveState=snakeTick16(snakeLiveState);
-        renderSnakeFrame(snakeLiveState);
-        if(snakeLiveState.winner){const w=snakeLiveState.winner;clearSnakeTimer();finishLocal(w)}
-      },210);
-    }
-    return;
+function snakeTick(st,withBot=false){
+  const n=snakeNormalize(JSON.parse(JSON.stringify(st)));
+  if(withBot){
+    const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
+    const bh=n.bodies.B[0],fr=Math.floor(n.food/SNAKE_N),fc=n.food%SNAKE_N;
+    const ranked=dirs.map(d=>{const p=snakeNextN(bh,d),r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
+      const danger=n.bodies.B.slice(0,-1).includes(p)||n.bodies.A.includes(p);
+      return {d,score:(danger?1000:0)+Math.abs(r-fr)+Math.abs(cc-fc)+Math.random()*2};
+    }).sort((a,b)=>a.score-b.score);if(ranked[0])n.dirs.B=ranked[0].d;
   }
-
-  // Online mode keeps a turn-safe board until a shared real-time loop is added.
-  const g=document.createElement("div");g.className="snake-grid snake-grid-16";
-  for(let i=0;i<256;i++){const cell=document.createElement("div");cell.className="snake-cell";if(i===st.food)cell.textContent="●";if(st.bodies.A.includes(i))cell.classList.add("snake-a");if(st.bodies.B.includes(i))cell.classList.add("snake-b");g.appendChild(cell)}
-  b.appendChild(g);
-  setStatus("Snake Duel online mode");
-}
-function renderSnakeFrame(st){
-  const cells=[...document.querySelectorAll(".snake-live .snake-cell")];
-  if(!cells.length)return;
-  cells.forEach((x,i)=>{x.className="snake-cell";x.textContent=i===st.food?"●":""});
-  st.bodies.A.forEach((i,k)=>{cells[i]?.classList.add("snake-a");if(k===0)cells[i]?.classList.add("snake-head")});
-  st.bodies.B.forEach((i,k)=>{cells[i]?.classList.add("snake-b");if(k===0)cells[i]?.classList.add("snake-head")});
-  setStatus(st.winner?(st.winner==="A"?"You win!":st.winner==="B"?"Computer wins":"Draw"):`You ${st.scores.A||0} • Computer ${st.scores.B||0} • First to 10`);
-}
-function snakeTick16(st){
-  const n=JSON.parse(JSON.stringify(st));
-  // AI chooses a safe direction biased toward food.
-  const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
-  const bh=n.bodies.B[0],fr=Math.floor(n.food/16),fc=n.food%16;
-  let ranked=dirs.map(d=>{
-    const p=snakeNext16(bh,d),r=Math.floor(p/16),cc=p%16;
-    const danger=n.bodies.B.slice(0,-1).includes(p)||n.bodies.A.includes(p);
-    const dist=Math.abs(r-fr)+Math.abs(cc-fc);
-    return {d,score:(danger?1000:0)+dist+Math.random()*3};
-  }).sort((a,b)=>a.score-b.score);
-  if(ranked.length)n.dirs.B=ranked[0].d;
-
   for(const mark of ["A","B"]){
-    const body=n.bodies[mark],head=snakeNext16(body[0],n.dirs[mark]);
-    body.unshift(head);
-    if(head===n.food){n.scores[mark]++;n.food=snakeSpawnFood(n)}else body.pop();
+    const body=n.bodies[mark],head=snakeNextN(body[0],n.dirs[mark]);body.unshift(head);
+    if(head===n.food){n.scores[mark]=(n.scores[mark]||0)+1;n.food=snakeSpawnFood(n)}else body.pop();
   }
   const ha=n.bodies.A[0],hb=n.bodies.B[0];
   const aCrash=n.bodies.A.slice(1).includes(ha)||n.bodies.B.includes(ha);
   const bCrash=n.bodies.B.slice(1).includes(hb)||n.bodies.A.includes(hb);
   if(aCrash&&bCrash)n.winner="draw";else if(aCrash)n.winner="B";else if(bCrash)n.winner="A";
-  if((n.scores.A||0)>=10)n.winner="A";if((n.scores.B||0)>=10)n.winner="B";
+  if(n.scores.A>=10)n.winner="A";if(n.scores.B>=10)n.winner="B";
   return n;
 }
-async function snakeMove(st,turn,d){if(botMode&&snakeLiveState&&!snakeOpposite(snakeLiveState.dirs.A,d))snakeLiveState.dirs.A=d}
+function renderSnake(st,turn){
+  const b=$("#gameBoard");b.className="game-board snake-duel-wrap";b.innerHTML="";
+  const live=snakeNormalize(botMode?(snakeLiveState||JSON.parse(JSON.stringify(st))):st);
+  if(botMode&&!snakeLiveState)snakeLiveState=live;
+
+  const g=document.createElement("div");g.className="snake-grid snake-live snake-grid-24";
+  for(let i=0;i<SNAKE_N*SNAKE_N;i++){const cell=document.createElement("div");cell.className="snake-cell";g.appendChild(cell)}
+  b.appendChild(g);
+
+  const ctl=document.createElement("div");ctl.className="feature-phone-pad";
+  ctl.innerHTML=`
+    <button data-d="up"><span>2</span><b>▲</b></button>
+    <button data-d="left"><span>4</span><b>◀</b></button>
+    <button class="pad-center" disabled><span>5</span><b>●</b></button>
+    <button data-d="right"><span>6</span><b>▶</b></button>
+    <button data-d="down"><span>8</span><b>▼</b></button>`;
+  ctl.querySelectorAll("[data-d]").forEach(q=>q.onclick=()=>snakeMove(live,turn,q.dataset.d));
+  b.appendChild(ctl);
+  renderSnakeFrame(live);
+
+  if(botMode&&!snakeTimer&&!live.winner){
+    snakeTimer=setInterval(()=>{
+      if(currentGame?.id!=="snake"||gameFinished||!snakeLiveState){clearSnakeTimer();return}
+      snakeLiveState=snakeTick(snakeLiveState,true);renderSnakeFrame(snakeLiveState);
+      if(snakeLiveState.winner){const w=snakeLiveState.winner;clearSnakeTimer();finishLocal(w)}
+    },150);
+  }
+
+  // Online: player A is the authoritative ticker. Both users only write their direction.
+  if(!botMode&&myMark==="A"&&!snakeTimer&&!live.winner){
+    snakeTimer=setInterval(async()=>{
+      if(currentGame?.id!=="snake"||gameFinished||snakeOnlineBusy){return}
+      snakeOnlineBusy=true;
+      try{
+        const snap=await get(roomRef("state"));if(!snap.exists())return;
+        const cur=snakeNormalize(snap.val());if(cur.winner)return;
+        const n=snakeTick(cur,false);
+        await update(roomRef(),{state:n,status:n.winner?"finished":"playing"});
+      }finally{snakeOnlineBusy=false}
+    },190);
+  }
+}
+function renderSnakeFrame(st){
+  const cells=[...document.querySelectorAll(".snake-live .snake-cell")];if(!cells.length)return;
+  cells.forEach((x,i)=>{x.className="snake-cell";x.innerHTML=i===st.food?'<span class="snake-food"></span>':""});
+  st.bodies.A.forEach((i,k)=>{cells[i]?.classList.add("snake-a");if(k===0)cells[i]?.classList.add("snake-head")});
+  st.bodies.B.forEach((i,k)=>{cells[i]?.classList.add("snake-b");if(k===0)cells[i]?.classList.add("snake-head")});
+  const opp=botMode?"Computer":(opponent?.name||"Opponent");
+  setStatus(st.winner?(st.winner===myMark?"You win!":st.winner==="draw"?"Draw":`${opp} wins`):`You ${st.scores[myMark]||0} • ${opp} ${st.scores[myMark==="A"?"B":"A"]||0} • First to 10`);
+}
+async function snakeMove(st,turn,d){
+  const cur=st.dirs?.[myMark]||"left";if(snakeOpposite(cur,d))return;
+  if(botMode){if(snakeLiveState)snakeLiveState.dirs.A=d;return}
+  await update(roomRef(`state/dirs/${myMark}`),d).catch(()=>{});
+}
 
 // ---------- Pong ----------
 let pongLive=null,pongRAF=null,pongLast=0;
@@ -1788,6 +1857,8 @@ function penaltyEnsure(st){
   if(!st.phase)st.phase="shoot";
   if(!st.results)st.results={A:[],B:[]};
   if(typeof st.keeperX!=="number")st.keeperX=50;
+  if(typeof st.keeperY!=="number")st.keeperY=55;
+  if(!st.owner)st.owner="A";
   return st;
 }
 function penaltyDots(arr,count){
@@ -1799,95 +1870,112 @@ function renderPenalty(st,turn){
   const b=$("#gameBoard");b.className="game-board penalty-stage";b.innerHTML="";
   if(botMode&&!penaltyLocal)penaltyLocal=penaltyEnsure(JSON.parse(JSON.stringify(st)));
   const live=penaltyEnsure(botMode?penaltyLocal:st);
+  if(typeof live.keeperY!=="number")live.keeperY=55;
+  if(!live.owner)live.owner="A";
+
+  const mine=myMark||"A",other=mine==="A"?"B":"A";
+  const shooting = botMode ? live.phase==="shoot" : live.phase==="shoot" ? live.owner===mine : false;
+  const defending = botMode ? live.phase==="defend" : live.phase==="defend" ? live.owner===other : false;
 
   const top=document.createElement("div");top.className="pk-top";
-  top.innerHTML=`<div class="pk-mode">${live.phase==="defend"?"🧤 DEFEND":"⚽ SHOOT"}</div>
-  <div class="pk-scoreline"><b>You ${live.scores.A}</b><span>–</span><b>${live.scores.B} Computer</b></div>
-  <div class="pk-round">Shots: ${live.shots.A} / ${live.shots.B}</div>`;
-  b.appendChild(top);
+  top.innerHTML=`<div class="pk-mode">${defending?"🧤 DEFEND":shooting?"⚽ SHOOT":"⏳ WAIT"}</div>
+    <div class="pk-scoreline"><b>You ${live.scores[mine]||0}</b><span>–</span><b>${live.scores[other]||0} ${botMode?"Computer":"Opponent"}</b></div>
+    <div class="pk-round">Shots: ${live.shots[mine]||0} / ${live.shots[other]||0}</div>`;b.appendChild(top);
 
-  const goal=document.createElement("div");goal.className=`pk-goal ${live.phase}`;goal.id="pkGoal";
+  const goal=document.createElement("div");goal.className=`pk-goal ${defending?"defend":shooting?"shoot":"wait"}`;goal.id="pkGoal";
   goal.innerHTML=`<div class="pk-net"></div>
-    <div class="pk-keeper ${live.phase==="defend"?"user-controlled":""}" id="pkKeeper" style="left:${live.keeperX}%">
+    <div class="pk-keeper ${defending?"user-controlled":""}" id="pkKeeper" style="left:${live.keeperX||50}%;top:${live.keeperY||55}%">
       <span class="pk-head"></span><span class="pk-body"></span><span class="pk-arm left"></span><span class="pk-arm right"></span>
     </div>
     <div class="pk-ball" id="pkBall">⚽</div><div class="pk-result" id="pkResult"></div>`;
 
-  if(live.phase==="shoot"){
-    PK_TARGETS.forEach((t,i)=>{
-      const z=document.createElement("button");z.className=`pk-target t${i}`;z.style.left=`${t.x}%`;z.style.top=`${t.y}%`;
-      z.disabled=penaltyBusy||!!live.winner;z.setAttribute("aria-label",`Shoot ${t.label}`);z.innerHTML="<span>＋</span>";
-      z.onclick=()=>penaltyShoot(live,i);goal.appendChild(z);
-    });
-  }else{
-    // Drag/touch anywhere in the goal to control the goalkeeper.
-    const moveKeeper=e=>{
+  if(shooting){
+    PK_TARGETS.forEach((t,i)=>{const z=document.createElement("button");z.className=`pk-target t${i}`;z.style.left=`${t.x}%`;z.style.top=`${t.y}%`;
+      z.disabled=penaltyBusy||!!live.winner;z.innerHTML="<span>＋</span>";z.onclick=()=>penaltyShoot(live,i);goal.appendChild(z)});
+  }else if(defending){
+    const move=e=>{
       if(penaltyBusy||live.winner)return;
       const r=goal.getBoundingClientRect();
-      const x=Math.max(9,Math.min(91,((e.clientX-r.left)/r.width)*100));
-      live.keeperX=x;
-      const k=document.querySelector("#pkKeeper");if(k)k.style.left=`${x}%`;
+      live.keeperX=Math.max(10,Math.min(90,((e.clientX-r.left)/r.width)*100));
+      live.keeperY=Math.max(20,Math.min(74,((e.clientY-r.top)/r.height)*100));
+      const k=$("#pkKeeper");if(k){k.style.left=`${live.keeperX}%`;k.style.top=`${live.keeperY}%`}
     };
-    goal.addEventListener("pointerdown",e=>{goal.setPointerCapture?.(e.pointerId);moveKeeper(e)});
-    goal.addEventListener("pointermove",e=>{if(e.buttons||e.pointerType==="touch")moveKeeper(e)});
+    goal.addEventListener("pointerdown",e=>{goal.setPointerCapture?.(e.pointerId);move(e)});
+    goal.addEventListener("pointermove",e=>{if(e.buttons||e.pointerType==="touch")move(e)});
   }
   b.appendChild(goal);
 
   const panel=document.createElement("div");panel.className="pk-panel";
-  panel.innerHTML=`<div><span>You</span><div class="pk-dots">${penaltyDots(live.results.A,live.shots.A)}</div></div>
-  <div><span>Computer</span><div class="pk-dots">${penaltyDots(live.results.B,live.shots.B)}</div></div>`;
-  b.appendChild(panel);
+  panel.innerHTML=`<div><span>You</span><div class="pk-dots">${penaltyDots(live.results[mine]||[],live.shots[mine]||0)}</div></div>
+  <div><span>${botMode?"Computer":"Opponent"}</span><div class="pk-dots">${penaltyDots(live.results[other]||[],live.shots[other]||0)}</div></div>`;b.appendChild(panel);
 
   const hint=document.createElement("div");hint.className="pk-hint";
-  hint.textContent=live.winner?(live.winner==="A"?"You win the shootout!":"Computer wins the shootout")
-    :live.phase==="defend"?"Drag the goalkeeper left/right — computer will shoot automatically"
-    :"Tap one of the 5 target points to shoot";
+  hint.textContent=live.winner?(live.winner===mine?"You win the shootout!":"Opponent wins the shootout")
+    :defending?"Drag goalkeeper anywhere: left/right AND up/down"
+    :shooting?"Tap one of the 5 ball targets":"Opponent's turn";
   b.appendChild(hint);setStatus(live.last||hint.textContent);
-
-  if(botMode&&live.phase==="defend"&&!live.winner&&!penaltyBusy&&!penaltyBotShotTimer){
-    penaltyBotShotTimer=setTimeout(()=>penaltyComputerShot(live),1500);
+  if(!botMode&&defending&&!live.winner){
+    const ready=document.createElement("button");ready.className="primary mini pk-ready";ready.textContent="🧤 Ready — Take Shot";
+    ready.onclick=()=>penaltyDefendOnline(live);b.appendChild(ready);
   }
+
+  if(botMode&&live.phase==="defend"&&!live.winner&&!penaltyBusy&&!penaltyBotShotTimer)penaltyBotShotTimer=setTimeout(()=>penaltyComputerShot(live),1500);
 }
-function penaltyAnimateShot(target,keeperX,result){
-  const ball=document.querySelector("#pkBall"),keeper=document.querySelector("#pkKeeper"),res=document.querySelector("#pkResult");
-  if(!ball||!keeper)return;const bt=PK_TARGETS[target];
+function penaltyAnimateShot(target,keeperX,keeperY,result){
+  const ball=$("#pkBall"),keeper=$("#pkKeeper"),res=$("#pkResult");if(!ball||!keeper)return;const bt=PK_TARGETS[target];
   ball.style.setProperty("--bx",`${bt.x}%`);ball.style.setProperty("--by",`${bt.y}%`);ball.classList.add("fly");
-  keeper.classList.add("dive-live");
+  keeper.style.left=`${keeperX}%`;keeper.style.top=`${keeperY}%`;keeper.classList.add("dive-live");
   if(res)setTimeout(()=>{res.textContent=result==="goal"?"GOAL!":"SAVED!";res.className=`pk-result show ${result}`},460);
 }
 function penaltyCheckWinner(n){
   if(n.shots.A>=5&&n.shots.B>=5&&n.shots.A===n.shots.B&&n.scores.A!==n.scores.B)n.winner=n.scores.A>n.scores.B?"A":"B";
 }
 async function penaltyShoot(st,target){
-  if(penaltyBusy||st.winner||st.phase!=="shoot")return;penaltyBusy=true;clearPenaltyTimer();
-  const n=penaltyLocal||penaltyEnsure(JSON.parse(JSON.stringify(st)));
-  const keeperTarget=Math.floor(Math.random()*PK_TARGETS.length),keeperX=PK_TARGETS[keeperTarget].x;
-  const saved=target===keeperTarget;
-  const k=document.querySelector("#pkKeeper");if(k)k.style.left=`${keeperX}%`;
-  penaltyAnimateShot(target,keeperX,saved?"save":"goal");
-  n.shots.A++;n.results.A.push(saved?"save":"goal");if(!saved)n.scores.A++;
-  n.last=saved?"SAVED by the computer!":"GOAL!";
-  await sleep(1150);penaltyCheckWinner(n);
-  if(n.winner){penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);finishLocal(n.winner);return}
-  n.phase="defend";n.keeperX=50;n.last="Move your goalkeeper — computer is preparing to shoot";
-  penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);
+  if(penaltyBusy||st.winner)return;
+  const mine=myMark||"A";
+  if(!botMode && !(st.phase==="shoot"&&st.owner===mine))return;
+  if(botMode && st.phase!=="shoot")return;
+  penaltyBusy=true;clearPenaltyTimer();
+  const n=penaltyEnsure(botMode?(penaltyLocal||JSON.parse(JSON.stringify(st))):JSON.parse(JSON.stringify(st)));
+  const shooter=botMode?"A":mine, defender=shooter==="A"?"B":"A";
+  const kt=Math.floor(Math.random()*PK_TARGETS.length),kx=PK_TARGETS[kt].x,ky=PK_TARGETS[kt].y;
+  const saved=target===kt;penaltyAnimateShot(target,kx,ky,saved?"save":"goal");
+  n.shots[shooter]++;n.results[shooter].push(saved?"save":"goal");if(!saved)n.scores[shooter]++;
+  n.last=saved?"SAVED!":"GOAL!";await sleep(1050);penaltyCheckWinner(n);
+  if(n.winner){
+    penaltyBusy=false;if(botMode){penaltyLocal=n;renderPenalty(n,uid);finishLocal(n.winner)}
+    else await update(roomRef(),{state:n,status:"finished"});
+    return;
+  }
+  n.phase="defend";n.owner=defender;n.keeperX=50;n.keeperY=55;
+  n.last=botMode?"Move your goalkeeper — computer is preparing":"Opponent is now shooting";
+  penaltyBusy=false;
+  if(botMode){penaltyLocal=n;renderPenalty(n,uid)}else await update(roomRef(),{state:n,turn:opponent.uid});
 }
 async function penaltyComputerShot(st){
   clearPenaltyTimer();if(penaltyBusy||st.winner||st.phase!=="defend")return;penaltyBusy=true;
-  const n=penaltyLocal||st;
-  const target=Math.floor(Math.random()*PK_TARGETS.length);
-  const shotX=PK_TARGETS[target].x;
-  const keeperX=n.keeperX||50;
-  // A save is based on where the player actually positioned the keeper.
-  const saved=Math.abs(keeperX-shotX)<=18;
-  penaltyAnimateShot(target,keeperX,saved?"save":"goal");
+  const n=penaltyLocal||st,target=Math.floor(Math.random()*PK_TARGETS.length),shot=PK_TARGETS[target];
+  const kx=n.keeperX||50,ky=n.keeperY||55;
+  const saved=Math.hypot((kx-shot.x)/1.15,(ky-shot.y)/1.0)<=18;
+  penaltyAnimateShot(target,kx,ky,saved?"save":"goal");
   n.shots.B++;n.results.B.push(saved?"save":"goal");if(!saved)n.scores.B++;
-  n.last=saved?"Great save!":"Computer scores";
-  await sleep(1150);penaltyCheckWinner(n);
+  n.last=saved?"Great save!":"Computer scores";await sleep(1050);penaltyCheckWinner(n);
   if(n.winner){penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);finishLocal(n.winner);return}
-  n.phase="shoot";n.keeperX=50;
-  n.last=(n.shots.A>=5&&n.shots.B>=5&&n.scores.A===n.scores.B)?"Sudden death — your shot":"Your turn to shoot";
+  n.phase="shoot";n.owner="A";n.keeperX=50;n.keeperY=55;n.last="Your turn to shoot";
   penaltyLocal=n;penaltyBusy=false;renderPenalty(n,uid);
+}
+async function penaltyDefendOnline(st){
+  if(botMode||penaltyBusy||st.winner||st.phase!=="defend"||st.owner!==myMark)return;
+  penaltyBusy=true;
+  const n=JSON.parse(JSON.stringify(st)),shooter=myMark==="A"?"B":"A",target=Math.floor(Math.random()*PK_TARGETS.length),shot=PK_TARGETS[target];
+  const kx=n.keeperX||50,ky=n.keeperY||55;
+  const saved=Math.hypot((kx-shot.x)/1.15,(ky-shot.y))<=18;
+  penaltyAnimateShot(target,kx,ky,saved?"save":"goal");
+  n.shots[shooter]++;n.results[shooter].push(saved?"save":"goal");if(!saved)n.scores[shooter]++;
+  n.last=saved?"Saved!":"Goal";await sleep(900);penaltyCheckWinner(n);
+  if(n.winner){penaltyBusy=false;await update(roomRef(),{state:n,status:"finished"});return}
+  n.phase="shoot";n.owner=myMark;n.keeperX=50;n.keeperY=55;penaltyBusy=false;
+  await update(roomRef(),{state:n,turn:uid});
 }
 async function penaltyKick(st,turn,lane){return penaltyShoot(st,lane)}
 // ---------- Reaction Tap ----------
