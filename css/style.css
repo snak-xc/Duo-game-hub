@@ -452,3 +452,24 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
   font-size:.78rem;
   opacity:.65;
 }
+
+
+/* v24 Snake multi-round scoreboard */
+.snake-round-bar{
+  width:min(94vw,500px);
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:8px;
+  padding:9px 11px;
+  margin-bottom:8px;
+  border-radius:12px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.09);
+  font-size:.74rem;
+}
+.snake-round-bar b{text-align:center;font-size:.86rem}
+.snake-round-bar span:last-child{text-align:right;opacity:.65}
+.snake-duel-wrap::after{
+  content:"Round: first to 10 dots • Match: first to 3 rounds • Own-body hit resets only your dots";
+}
