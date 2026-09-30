@@ -441,3 +441,14 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
 .feature-phone-pad button span{
   display:none!important;
 }
+
+
+/* v22 Snake scoring/control fix */
+.snake-duel-wrap::after{
+  content:"First to 10 dots wins • No collision knock-out";
+  display:block;
+  margin-top:8px;
+  text-align:center;
+  font-size:.78rem;
+  opacity:.65;
+}
