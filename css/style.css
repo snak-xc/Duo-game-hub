@@ -431,3 +431,13 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
 .pk-keeper{transition:left .08s linear,top .08s linear,transform .18s!important}
 .pk-goal.defend::before{content:"DRAG KEEPER ↔ ↕";bottom:5px}
 .pk-ready{margin-top:2px}
+
+
+/* v21 Snake fairness/control cleanup */
+.feature-phone-pad button b{
+  font-size:1.55rem;
+  line-height:1;
+}
+.feature-phone-pad button span{
+  display:none!important;
+}
