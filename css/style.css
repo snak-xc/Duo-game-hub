@@ -445,7 +445,7 @@ button.secondary{background:#1a2240;border:1px solid #39456f}.danger{background:
 
 /* v22 Snake scoring/control fix */
 .snake-duel-wrap::after{
-  content:"First to 10 dots wins • No collision knock-out";
+  content:"First to 10 dots wins • Hit your own body = reset score to 0";
   display:block;
   margin-top:8px;
   text-align:center;
