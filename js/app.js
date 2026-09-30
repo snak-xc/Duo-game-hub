@@ -284,7 +284,7 @@ function initialState(game){
   if(game==="quiz") return {index:Math.floor(Math.random()*QUIZ_BANK.length),scores:{A:0,B:0},winner:null};
   if(game==="math") return makeMathState();
   if(game==="numberguess") return {target:Math.floor(Math.random()*100)+1,lastGuess:null,hint:"1 - 100",winner:null};
-  if(game==="snake") return {bodies:{A:[468,469,470,471],B:[107,106,105,104]},dirs:{A:"left",B:"right"},food:286,scores:{A:0,B:0},winner:null};
+  if(game==="snake") return {bodies:{A:[468,469,470,471],B:[107,106,105,104]},dirs:{A:"left",B:"right"},food:286,scores:{A:0,B:0},roundWins:{A:0,B:0},roundNumber:1,roundMessage:"",winner:null};
   if(game==="pong") return {ballLane:1,rally:0,scores:{A:0,B:0},winner:null,last:"Move paddle to the ball lane"};
   if(game==="airhockey") return {scores:{A:0,B:0},round:1,puckLane:1,strikerLane:{A:1,B:1},last:"Drag your striker, then shoot",winner:null};
   if(game==="snakesladders") return {pos:{A:1,B:1},lastRoll:null,last:"Roll the dice",winner:null};
@@ -1609,15 +1609,40 @@ async function numberGuess(st,turn,v){
 }
 // ---------- Snake Duel ----------
 let snakeTimer=null, snakeLiveState=null, snakeOnlineBusy=false;
+let snakeBotTurnCounter=0;
 const SNAKE_N=24;
-function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null;snakeOnlineBusy=false;snakeBotTurnCounter=0}
+const SNAKE_ROUND_TARGET=10;
+const SNAKE_MATCH_ROUNDS=3;
+
+function clearSnakeTimer(){
+  if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}
+  snakeLiveState=null;
+  snakeOnlineBusy=false;
+  snakeBotTurnCounter=0;
+}
+
 function snakeNextN(pos,dir){
   let r=Math.floor(pos/SNAKE_N),c=pos%SNAKE_N;
-  if(dir==="up")r=(r+SNAKE_N-1)%SNAKE_N;if(dir==="down")r=(r+1)%SNAKE_N;
-  if(dir==="left")c=(c+SNAKE_N-1)%SNAKE_N;if(dir==="right")c=(c+1)%SNAKE_N;
+  if(dir==="up")r=(r+SNAKE_N-1)%SNAKE_N;
+  if(dir==="down")r=(r+1)%SNAKE_N;
+  if(dir==="left")c=(c+SNAKE_N-1)%SNAKE_N;
+  if(dir==="right")c=(c+1)%SNAKE_N;
   return r*SNAKE_N+c;
 }
-function snakeOpposite(a,b){return (a==="up"&&b==="down")||(a==="down"&&b==="up")||(a==="left"&&b==="right")||(a==="right"&&b==="left")}
+
+function snakeOpposite(a,b){
+  return (a==="up"&&b==="down")||(a==="down"&&b==="up")||
+         (a==="left"&&b==="right")||(a==="right"&&b==="left");
+}
+
+function snakeAllowedTurns(dir){
+  // forward + left turn + right turn only; direct reverse is impossible.
+  if(dir==="up")return ["up","left","right"];
+  if(dir==="down")return ["down","right","left"];
+  if(dir==="left")return ["left","down","up"];
+  return ["right","up","down"];
+}
+
 function snakeNormalize(st){
   if(!st.bodies||Math.max(...(st.bodies.A||[0]),...(st.bodies.B||[0]))>=SNAKE_N*SNAKE_N){
     st.bodies={A:[468,469,470,471],B:[107,106,105,104]};
@@ -1625,8 +1650,12 @@ function snakeNormalize(st){
   if(!st.dirs)st.dirs={A:"left",B:"right"};
   if(typeof st.food!=="number"||st.food>=SNAKE_N*SNAKE_N)st.food=286;
   if(!st.scores)st.scores={A:0,B:0};
+  if(!st.roundWins)st.roundWins={A:0,B:0};
+  if(!st.roundNumber)st.roundNumber=1;
+  if(!st.roundMessage)st.roundMessage="";
   return st;
 }
+
 function snakeResetPlayer(st,mark){
   if(mark==="A"){
     st.bodies.A=[468,469,470,471];
@@ -1637,53 +1666,67 @@ function snakeResetPlayer(st,mark){
     st.dirs.B="right";
     st.scores.B=0;
   }
-  // If food happens to be under the reset snake, move it.
   if(st.bodies.A.includes(st.food)||st.bodies.B.includes(st.food))st.food=snakeSpawnFood(st);
 }
+
+function snakeResetRound(st){
+  st.bodies={A:[468,469,470,471],B:[107,106,105,104]};
+  st.dirs={A:"left",B:"right"};
+  st.scores={A:0,B:0};
+  st.food=snakeSpawnFood(st);
+  snakeBotTurnCounter=0;
+}
+
 function snakeSpawnFood(st){
-  const max=SNAKE_N*SNAKE_N,used=new Set([...(st.bodies.A||[]),...(st.bodies.B||[])]);
-  const empty=[];for(let i=0;i<max;i++)if(!used.has(i))empty.push(i);
+  const max=SNAKE_N*SNAKE_N;
+  const used=new Set([...(st.bodies.A||[]),...(st.bodies.B||[])]);
+  const empty=[];
+  for(let i=0;i<max;i++)if(!used.has(i))empty.push(i);
   return empty[Math.floor(Math.random()*empty.length)]??0;
 }
-let snakeBotTurnCounter=0;
+
+function snakeBotPickDirection(st){
+  const current=st.dirs.B||"right";
+  const choices=snakeAllowedTurns(current); // never contains the opposite direction
+  const bh=st.bodies.B[0];
+  const fr=Math.floor(st.food/SNAKE_N),fc=st.food%SNAKE_N;
+
+  const ranked=choices.map(d=>{
+    const p=snakeNextN(bh,d);
+    const r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
+    const ownHit=st.bodies.B.slice(0,-1).includes(p);
+    const dist=Math.abs(r-fr)+Math.abs(cc-fc);
+
+    let exits=0;
+    for(const nd of snakeAllowedTurns(d)){
+      const pp=snakeNextN(p,nd);
+      if(!st.bodies.B.includes(pp))exits++;
+    }
+
+    return {
+      d,
+      score:(ownHit?10000:0)+(exits===0?1000:0)+(exits===1?12:0)+dist*1.6+Math.random()*1.5
+    };
+  }).sort((a,b)=>a.score-b.score);
+
+  if(!ranked.length)return current;
+
+  // Better than v23, but not perfect: 90% best move, 10% second safe move.
+  if(ranked.length>1 && ranked[1].score<900 && Math.random()<0.10)return ranked[1].d;
+  return ranked[0].d;
+}
+
 function snakeTick(st,withBot=false){
   const n=snakeNormalize(JSON.parse(JSON.stringify(st)));
 
   if(withBot){
     snakeBotTurnCounter++;
-    // Smarter but still beatable: re-plan often, avoid its own body, prefer food.
     if(snakeBotTurnCounter%2===0){
-      const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
-      const bh=n.bodies.B[0],fr=Math.floor(n.food/SNAKE_N),fc=n.food%SNAKE_N;
-      const ranked=dirs.map(d=>{
-        const p=snakeNextN(bh,d),r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
-        const ownHit=n.bodies.B.slice(0,-1).includes(p);
-        const dist=Math.abs(r-fr)+Math.abs(cc-fc);
-
-        // Small look-ahead: penalize moves that lead into a tight own-body trap.
-        let exits=0;
-        for(const nd of ["up","down","left","right"]){
-          if(snakeOpposite(d,nd))continue;
-          const pp=snakeNextN(p,nd);
-          if(!n.bodies.B.includes(pp))exits++;
-        }
-
-        return {
-          d,
-          score:(ownHit?10000:0) + dist*1.7 + (exits<=1?8:0) + Math.random()*2.5
-        };
-      }).sort((a,b)=>a.score-b.score);
-
-      if(ranked.length){
-        // Usually best move; occasionally second-best so AI is not perfect.
-        n.dirs.B=(ranked.length>1 && Math.random()<0.14 ? ranked[1] : ranked[0]).d;
-      }
+      const next=snakeBotPickDirection(n);
+      // Final hard guard against direct reverse.
+      if(!snakeOpposite(n.dirs.B,next))n.dirs.B=next;
     }
   }
-
-  // Move both snakes.
-  const oldA=n.bodies.A.slice();
-  const oldB=n.bodies.B.slice();
 
   for(const mark of ["A","B"]){
     const body=n.bodies[mark];
@@ -1698,19 +1741,31 @@ function snakeTick(st,withBot=false){
     }
   }
 
-  const ha=n.bodies.A[0], hb=n.bodies.B[0];
+  const ha=n.bodies.A[0],hb=n.bodies.B[0];
 
-  // Only hitting your OWN body resets you.
-  // Hitting the opponent's body does nothing.
+  // Own-body collision: reset only that snake and its current-round dots to 0.
+  // Opponent body is harmless.
   const aOwnCrash=n.bodies.A.slice(1).includes(ha);
   const bOwnCrash=n.bodies.B.slice(1).includes(hb);
-
   if(aOwnCrash)snakeResetPlayer(n,"A");
   if(bOwnCrash)snakeResetPlayer(n,"B");
 
-  // First to 10 still wins.
-  if((n.scores.A||0)>=10)n.winner="A";
-  if((n.scores.B||0)>=10)n.winner="B";
+  // Round winner: first to 10 dots.
+  let roundWinner=null;
+  if((n.scores.A||0)>=SNAKE_ROUND_TARGET)roundWinner="A";
+  else if((n.scores.B||0)>=SNAKE_ROUND_TARGET)roundWinner="B";
+
+  if(roundWinner){
+    n.roundWins[roundWinner]=(n.roundWins[roundWinner]||0)+1;
+    n.roundMessage=`${roundWinner==="A"?"Player A":"Player B"} won round ${n.roundNumber}`;
+    n.roundNumber++;
+
+    if(n.roundWins[roundWinner]>=SNAKE_MATCH_ROUNDS){
+      n.winner=roundWinner;
+    }else{
+      snakeResetRound(n);
+    }
+  }
 
   return n;
 }
@@ -1720,8 +1775,18 @@ function renderSnake(st,turn){
   const live=snakeNormalize(botMode?(snakeLiveState||JSON.parse(JSON.stringify(st))):st);
   if(botMode&&!snakeLiveState)snakeLiveState=live;
 
+  const roundBar=document.createElement("div");
+  roundBar.className="snake-round-bar";
+  const oppName=botMode?"Computer":(opponent?.name||"Opponent");
+  roundBar.innerHTML=`<span>Round ${live.roundNumber}</span><b>You ${live.roundWins[myMark]||0} – ${live.roundWins[myMark==="A"?"B":"A"]||0} ${oppName}</b><span>First to ${SNAKE_MATCH_ROUNDS} rounds</span>`;
+  b.appendChild(roundBar);
+
   const g=document.createElement("div");g.className="snake-grid snake-live snake-grid-24";
-  for(let i=0;i<SNAKE_N*SNAKE_N;i++){const cell=document.createElement("div");cell.className="snake-cell";g.appendChild(cell)}
+  for(let i=0;i<SNAKE_N*SNAKE_N;i++){
+    const cell=document.createElement("div");
+    cell.className="snake-cell";
+    g.appendChild(cell);
+  }
   b.appendChild(g);
 
   const ctl=document.createElement("div");ctl.className="feature-phone-pad";
@@ -1733,51 +1798,81 @@ function renderSnake(st,turn){
     <button data-d="down" aria-label="Down"><b>▼</b></button>`;
   ctl.querySelectorAll("[data-d]").forEach(q=>q.onclick=()=>snakeMove(live,turn,q.dataset.d));
   b.appendChild(ctl);
+
   renderSnakeFrame(live);
 
   if(botMode&&!snakeTimer&&!live.winner){
     snakeTimer=setInterval(()=>{
       if(currentGame?.id!=="snake"||gameFinished||!snakeLiveState){clearSnakeTimer();return}
-      snakeLiveState=snakeTick(snakeLiveState,true);renderSnakeFrame(snakeLiveState);
-      if(snakeLiveState.winner){const w=snakeLiveState.winner;clearSnakeTimer();finishLocal(w)}
+      snakeLiveState=snakeTick(snakeLiveState,true);
+      renderSnakeFrame(snakeLiveState);
+      if(snakeLiveState.winner){
+        const w=snakeLiveState.winner;
+        clearSnakeTimer();
+        finishLocal(w);
+      }
     },205);
   }
 
-  // Online: player A is the authoritative ticker. Both users only write their direction.
   if(!botMode&&myMark==="A"&&!snakeTimer&&!live.winner){
     snakeTimer=setInterval(async()=>{
-      if(currentGame?.id!=="snake"||gameFinished||snakeOnlineBusy){return}
+      if(currentGame?.id!=="snake"||gameFinished||snakeOnlineBusy)return;
       snakeOnlineBusy=true;
       try{
-        const snap=await get(roomRef("state"));if(!snap.exists())return;
-        const cur=snakeNormalize(snap.val());if(cur.winner)return;
+        const snap=await get(roomRef("state"));
+        if(!snap.exists())return;
+        const cur=snakeNormalize(snap.val());
+        if(cur.winner)return;
         const n=snakeTick(cur,false);
         await update(roomRef(),{state:n,status:n.winner?"finished":"playing"});
-      }finally{snakeOnlineBusy=false}
+      }finally{
+        snakeOnlineBusy=false;
+      }
     },205);
   }
 }
+
 function renderSnakeFrame(st){
-  const cells=[...document.querySelectorAll(".snake-live .snake-cell")];if(!cells.length)return;
-  cells.forEach((x,i)=>{x.className="snake-cell";x.innerHTML=i===st.food?'<span class="snake-food"></span>':""});
-  st.bodies.A.forEach((i,k)=>{cells[i]?.classList.add("snake-a");if(k===0)cells[i]?.classList.add("snake-head")});
-  st.bodies.B.forEach((i,k)=>{cells[i]?.classList.add("snake-b");if(k===0)cells[i]?.classList.add("snake-head")});
+  const cells=[...document.querySelectorAll(".snake-live .snake-cell")];
+  if(!cells.length)return;
+
+  cells.forEach((x,i)=>{
+    x.className="snake-cell";
+    x.innerHTML=i===st.food?'<span class="snake-food"></span>':"";
+  });
+
+  st.bodies.A.forEach((i,k)=>{
+    cells[i]?.classList.add("snake-a");
+    if(k===0)cells[i]?.classList.add("snake-head");
+  });
+  st.bodies.B.forEach((i,k)=>{
+    cells[i]?.classList.add("snake-b");
+    if(k===0)cells[i]?.classList.add("snake-head");
+  });
+
   const opp=botMode?"Computer":(opponent?.name||"Opponent");
-  setStatus(st.winner?(st.winner===myMark?"You win!":st.winner==="draw"?"Draw":`${opp} wins`):`You ${st.scores[myMark]||0} • ${opp} ${st.scores[myMark==="A"?"B":"A"]||0} • Own-body hit = reset to 0 • First to 10`);
+  const bar=document.querySelector(".snake-round-bar");
+  if(bar){
+    bar.innerHTML=`<span>Round ${st.roundNumber}</span><b>You ${st.roundWins[myMark]||0} – ${st.roundWins[myMark==="A"?"B":"A"]||0} ${opp}</b><span>First to ${SNAKE_MATCH_ROUNDS} rounds</span>`;
+  }
+
+  setStatus(
+    st.winner
+      ? (st.winner===myMark?"You win the match!":`${opp} wins the match`)
+      : `Dots: You ${st.scores[myMark]||0} • ${opp} ${st.scores[myMark==="A"?"B":"A"]||0} • Own-body hit resets your dots`
+  );
 }
+
 async function snakeMove(st,turn,d){
-  const current=(botMode?sakeCurrentDirForMove():st.dirs?.[myMark])||"left";
-  // Classic snake rule: it can turn left/right/up/down, but cannot reverse directly.
+  const current=(botMode?(snakeLiveState?.dirs?.A||"left"):(st.dirs?.[myMark]||"left"));
   if(snakeOpposite(current,d))return;
 
   if(botMode){
     if(snakeLiveState)snakeLiveState.dirs.A=d;
     return;
   }
+
   await update(roomRef(`state/dirs/${myMark}`),d).catch(()=>{});
-}
-function sakeCurrentDirForMove(){
-  return snakeLiveState?.dirs?.A || "left";
 }
 
 // ---------- Pong ----------
