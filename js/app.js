@@ -1610,7 +1610,7 @@ async function numberGuess(st,turn,v){
 // ---------- Snake Duel ----------
 let snakeTimer=null, snakeLiveState=null, snakeOnlineBusy=false;
 const SNAKE_N=24;
-function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null;snakeOnlineBusy=false}
+function clearSnakeTimer(){if(snakeTimer){clearInterval(snakeTimer);snakeTimer=null}snakeLiveState=null;snakeOnlineBusy=false;snakeBotTurnCounter=0}
 function snakeNextN(pos,dir){
   let r=Math.floor(pos/SNAKE_N),c=pos%SNAKE_N;
   if(dir==="up")r=(r+SNAKE_N-1)%SNAKE_N;if(dir==="down")r=(r+1)%SNAKE_N;
@@ -1632,25 +1632,56 @@ function snakeSpawnFood(st){
   const empty=[];for(let i=0;i<max;i++)if(!used.has(i))empty.push(i);
   return empty[Math.floor(Math.random()*empty.length)]??0;
 }
+let snakeBotTurnCounter=0;
 function snakeTick(st,withBot=false){
   const n=snakeNormalize(JSON.parse(JSON.stringify(st)));
+
   if(withBot){
-    const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
-    const bh=n.bodies.B[0],fr=Math.floor(n.food/SNAKE_N),fc=n.food%SNAKE_N;
-    const ranked=dirs.map(d=>{const p=snakeNextN(bh,d),r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
-      const danger=n.bodies.B.slice(0,-1).includes(p)||n.bodies.A.includes(p);
-      return {d,score:(danger?1000:0)+Math.abs(r-fr)+Math.abs(cc-fc)+Math.random()*2};
-    }).sort((a,b)=>a.score-b.score);if(ranked[0])n.dirs.B=ranked[0].d;
+    snakeBotTurnCounter++;
+    if(snakeBotTurnCounter%3===0){
+      const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
+      const bh=n.bodies.B[0],fr=Math.floor(n.food/SNAKE_N),fc=n.food%SNAKE_N;
+      const ranked=dirs.map(d=>{
+        const p=snakeNextN(bh,d),r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
+        const danger=n.bodies.B.slice(0,-1).includes(p);
+        const dist=Math.abs(r-fr)+Math.abs(cc-fc);
+        return {d,score:(danger?1000:0)+dist+Math.random()*7};
+      }).sort((a,b)=>a.score-b.score);
+
+      if(ranked.length){
+        const safe=ranked.filter(x=>x.score<900);
+        if(safe.length>1 && Math.random()<0.28){
+          n.dirs.B=safe[1+Math.floor(Math.random()*(safe.length-1))].d;
+        }else{
+          n.dirs.B=ranked[0].d;
+        }
+      }
+    }
   }
+
   for(const mark of ["A","B"]){
-    const body=n.bodies[mark],head=snakeNextN(body[0],n.dirs[mark]);body.unshift(head);
-    if(head===n.food){n.scores[mark]=(n.scores[mark]||0)+1;n.food=snakeSpawnFood(n)}else body.pop();
+    const body=n.bodies[mark],head=snakeNextN(body[0],n.dirs[mark]);
+    body.unshift(head);
+    if(head===n.food){
+      n.scores[mark]=(n.scores[mark]||0)+1;
+      n.food=snakeSpawnFood(n);
+    }else{
+      body.pop();
+    }
   }
+
   const ha=n.bodies.A[0],hb=n.bodies.B[0];
-  const aCrash=n.bodies.A.slice(1).includes(ha)||n.bodies.B.includes(ha);
-  const bCrash=n.bodies.B.slice(1).includes(hb)||n.bodies.A.includes(hb);
-  if(aCrash&&bCrash)n.winner="draw";else if(aCrash)n.winner="B";else if(bCrash)n.winner="A";
-  if(n.scores.A>=10)n.winner="A";if(n.scores.B>=10)n.winner="B";
+  const headOn=ha===hb;
+  const aCrash=n.bodies.A.slice(1).includes(ha);
+  const bCrash=n.bodies.B.slice(1).includes(hb);
+
+  if(headOn)n.winner="draw";
+  else if(aCrash&&bCrash)n.winner="draw";
+  else if(aCrash)n.winner="B";
+  else if(bCrash)n.winner="A";
+
+  if(n.scores.A>=10)n.winner="A";
+  if(n.scores.B>=10)n.winner="B";
   return n;
 }
 function renderSnake(st,turn){
@@ -1664,11 +1695,11 @@ function renderSnake(st,turn){
 
   const ctl=document.createElement("div");ctl.className="feature-phone-pad";
   ctl.innerHTML=`
-    <button data-d="up"><span>2</span><b>▲</b></button>
-    <button data-d="left"><span>4</span><b>◀</b></button>
-    <button class="pad-center" disabled><span>5</span><b>●</b></button>
-    <button data-d="right"><span>6</span><b>▶</b></button>
-    <button data-d="down"><span>8</span><b>▼</b></button>`;
+    <button data-d="up" aria-label="Up"><b>▲</b></button>
+    <button data-d="left" aria-label="Left"><b>◀</b></button>
+    <button class="pad-center" disabled aria-label="Center"><b>●</b></button>
+    <button data-d="right" aria-label="Right"><b>▶</b></button>
+    <button data-d="down" aria-label="Down"><b>▼</b></button>`;
   ctl.querySelectorAll("[data-d]").forEach(q=>q.onclick=()=>snakeMove(live,turn,q.dataset.d));
   b.appendChild(ctl);
   renderSnakeFrame(live);
@@ -1678,7 +1709,7 @@ function renderSnake(st,turn){
       if(currentGame?.id!=="snake"||gameFinished||!snakeLiveState){clearSnakeTimer();return}
       snakeLiveState=snakeTick(snakeLiveState,true);renderSnakeFrame(snakeLiveState);
       if(snakeLiveState.winner){const w=snakeLiveState.winner;clearSnakeTimer();finishLocal(w)}
-    },150);
+    },185);
   }
 
   // Online: player A is the authoritative ticker. Both users only write their direction.
@@ -1692,7 +1723,7 @@ function renderSnake(st,turn){
         const n=snakeTick(cur,false);
         await update(roomRef(),{state:n,status:n.winner?"finished":"playing"});
       }finally{snakeOnlineBusy=false}
-    },190);
+    },205);
   }
 }
 function renderSnakeFrame(st){
