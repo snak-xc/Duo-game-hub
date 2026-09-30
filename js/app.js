@@ -1627,6 +1627,19 @@ function snakeNormalize(st){
   if(!st.scores)st.scores={A:0,B:0};
   return st;
 }
+function snakeResetPlayer(st,mark){
+  if(mark==="A"){
+    st.bodies.A=[468,469,470,471];
+    st.dirs.A="left";
+    st.scores.A=0;
+  }else{
+    st.bodies.B=[107,106,105,104];
+    st.dirs.B="right";
+    st.scores.B=0;
+  }
+  // If food happens to be under the reset snake, move it.
+  if(st.bodies.A.includes(st.food)||st.bodies.B.includes(st.food))st.food=snakeSpawnFood(st);
+}
 function snakeSpawnFood(st){
   const max=SNAKE_N*SNAKE_N,used=new Set([...(st.bodies.A||[]),...(st.bodies.B||[])]);
   const empty=[];for(let i=0;i<max;i++)if(!used.has(i))empty.push(i);
@@ -1638,25 +1651,39 @@ function snakeTick(st,withBot=false){
 
   if(withBot){
     snakeBotTurnCounter++;
-    if(snakeBotTurnCounter%4===0){
-      const dirs=["up","down","left","right"];
+    // Smarter but still beatable: re-plan often, avoid its own body, prefer food.
+    if(snakeBotTurnCounter%2===0){
+      const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
       const bh=n.bodies.B[0],fr=Math.floor(n.food/SNAKE_N),fc=n.food%SNAKE_N;
       const ranked=dirs.map(d=>{
         const p=snakeNextN(bh,d),r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
+        const ownHit=n.bodies.B.slice(0,-1).includes(p);
         const dist=Math.abs(r-fr)+Math.abs(cc-fc);
-        return {d,score:dist+Math.random()*10};
+
+        // Small look-ahead: penalize moves that lead into a tight own-body trap.
+        let exits=0;
+        for(const nd of ["up","down","left","right"]){
+          if(snakeOpposite(d,nd))continue;
+          const pp=snakeNextN(p,nd);
+          if(!n.bodies.B.includes(pp))exits++;
+        }
+
+        return {
+          d,
+          score:(ownHit?10000:0) + dist*1.7 + (exits<=1?8:0) + Math.random()*2.5
+        };
       }).sort((a,b)=>a.score-b.score);
 
-      // Fairer bot: usually heads toward food, sometimes chooses another direction.
       if(ranked.length){
-        if(Math.random()<0.35){
-          n.dirs.B=ranked[Math.min(ranked.length-1,1+Math.floor(Math.random()*3))].d;
-        }else{
-          n.dirs.B=ranked[0].d;
-        }
+        // Usually best move; occasionally second-best so AI is not perfect.
+        n.dirs.B=(ranked.length>1 && Math.random()<0.14 ? ranked[1] : ranked[0]).d;
       }
     }
   }
+
+  // Move both snakes.
+  const oldA=n.bodies.A.slice();
+  const oldB=n.bodies.B.slice();
 
   for(const mark of ["A","B"]){
     const body=n.bodies[mark];
@@ -1671,9 +1698,17 @@ function snakeTick(st,withBot=false){
     }
   }
 
-  // v22: Snake Duel is score-based only.
-  // Touching your own body or the opponent no longer causes a random/early loss.
-  // The first snake to eat 10 dots wins.
+  const ha=n.bodies.A[0], hb=n.bodies.B[0];
+
+  // Only hitting your OWN body resets you.
+  // Hitting the opponent's body does nothing.
+  const aOwnCrash=n.bodies.A.slice(1).includes(ha);
+  const bOwnCrash=n.bodies.B.slice(1).includes(hb);
+
+  if(aOwnCrash)snakeResetPlayer(n,"A");
+  if(bOwnCrash)snakeResetPlayer(n,"B");
+
+  // First to 10 still wins.
   if((n.scores.A||0)>=10)n.winner="A";
   if((n.scores.B||0)>=10)n.winner="B";
 
@@ -1728,16 +1763,21 @@ function renderSnakeFrame(st){
   st.bodies.A.forEach((i,k)=>{cells[i]?.classList.add("snake-a");if(k===0)cells[i]?.classList.add("snake-head")});
   st.bodies.B.forEach((i,k)=>{cells[i]?.classList.add("snake-b");if(k===0)cells[i]?.classList.add("snake-head")});
   const opp=botMode?"Computer":(opponent?.name||"Opponent");
-  setStatus(st.winner?(st.winner===myMark?"You win!":st.winner==="draw"?"Draw":`${opp} wins`):`You ${st.scores[myMark]||0} • ${opp} ${st.scores[myMark==="A"?"B":"A"]||0} • First to 10`);
+  setStatus(st.winner?(st.winner===myMark?"You win!":st.winner==="draw"?"Draw":`${opp} wins`):`You ${st.scores[myMark]||0} • ${opp} ${st.scores[myMark==="A"?"B":"A"]||0} • Own-body hit = reset to 0 • First to 10`);
 }
 async function snakeMove(st,turn,d){
-  // Accept every arrow immediately. This fixes the Right button feeling "dead"
-  // when the snake is currently moving left.
+  const current=(botMode?sakeCurrentDirForMove():st.dirs?.[myMark])||"left";
+  // Classic snake rule: it can turn left/right/up/down, but cannot reverse directly.
+  if(snakeOpposite(current,d))return;
+
   if(botMode){
     if(snakeLiveState)snakeLiveState.dirs.A=d;
     return;
   }
   await update(roomRef(`state/dirs/${myMark}`),d).catch(()=>{});
+}
+function sakeCurrentDirForMove(){
+  return snakeLiveState?.dirs?.A || "left";
 }
 
 // ---------- Pong ----------
