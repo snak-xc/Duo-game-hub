@@ -1638,20 +1638,19 @@ function snakeTick(st,withBot=false){
 
   if(withBot){
     snakeBotTurnCounter++;
-    if(snakeBotTurnCounter%3===0){
-      const dirs=["up","down","left","right"].filter(d=>!snakeOpposite(n.dirs.B,d));
+    if(snakeBotTurnCounter%4===0){
+      const dirs=["up","down","left","right"];
       const bh=n.bodies.B[0],fr=Math.floor(n.food/SNAKE_N),fc=n.food%SNAKE_N;
       const ranked=dirs.map(d=>{
         const p=snakeNextN(bh,d),r=Math.floor(p/SNAKE_N),cc=p%SNAKE_N;
-        const danger=n.bodies.B.slice(0,-1).includes(p);
         const dist=Math.abs(r-fr)+Math.abs(cc-fc);
-        return {d,score:(danger?1000:0)+dist+Math.random()*7};
+        return {d,score:dist+Math.random()*10};
       }).sort((a,b)=>a.score-b.score);
 
+      // Fairer bot: usually heads toward food, sometimes chooses another direction.
       if(ranked.length){
-        const safe=ranked.filter(x=>x.score<900);
-        if(safe.length>1 && Math.random()<0.28){
-          n.dirs.B=safe[1+Math.floor(Math.random()*(safe.length-1))].d;
+        if(Math.random()<0.35){
+          n.dirs.B=ranked[Math.min(ranked.length-1,1+Math.floor(Math.random()*3))].d;
         }else{
           n.dirs.B=ranked[0].d;
         }
@@ -1660,8 +1659,10 @@ function snakeTick(st,withBot=false){
   }
 
   for(const mark of ["A","B"]){
-    const body=n.bodies[mark],head=snakeNextN(body[0],n.dirs[mark]);
+    const body=n.bodies[mark];
+    const head=snakeNextN(body[0],n.dirs[mark]);
     body.unshift(head);
+
     if(head===n.food){
       n.scores[mark]=(n.scores[mark]||0)+1;
       n.food=snakeSpawnFood(n);
@@ -1670,20 +1671,15 @@ function snakeTick(st,withBot=false){
     }
   }
 
-  const ha=n.bodies.A[0],hb=n.bodies.B[0];
-  const headOn=ha===hb;
-  const aCrash=n.bodies.A.slice(1).includes(ha);
-  const bCrash=n.bodies.B.slice(1).includes(hb);
+  // v22: Snake Duel is score-based only.
+  // Touching your own body or the opponent no longer causes a random/early loss.
+  // The first snake to eat 10 dots wins.
+  if((n.scores.A||0)>=10)n.winner="A";
+  if((n.scores.B||0)>=10)n.winner="B";
 
-  if(headOn)n.winner="draw";
-  else if(aCrash&&bCrash)n.winner="draw";
-  else if(aCrash)n.winner="B";
-  else if(bCrash)n.winner="A";
-
-  if(n.scores.A>=10)n.winner="A";
-  if(n.scores.B>=10)n.winner="B";
   return n;
 }
+
 function renderSnake(st,turn){
   const b=$("#gameBoard");b.className="game-board snake-duel-wrap";b.innerHTML="";
   const live=snakeNormalize(botMode?(snakeLiveState||JSON.parse(JSON.stringify(st))):st);
@@ -1709,7 +1705,7 @@ function renderSnake(st,turn){
       if(currentGame?.id!=="snake"||gameFinished||!snakeLiveState){clearSnakeTimer();return}
       snakeLiveState=snakeTick(snakeLiveState,true);renderSnakeFrame(snakeLiveState);
       if(snakeLiveState.winner){const w=snakeLiveState.winner;clearSnakeTimer();finishLocal(w)}
-    },185);
+    },205);
   }
 
   // Online: player A is the authoritative ticker. Both users only write their direction.
@@ -1735,8 +1731,12 @@ function renderSnakeFrame(st){
   setStatus(st.winner?(st.winner===myMark?"You win!":st.winner==="draw"?"Draw":`${opp} wins`):`You ${st.scores[myMark]||0} • ${opp} ${st.scores[myMark==="A"?"B":"A"]||0} • First to 10`);
 }
 async function snakeMove(st,turn,d){
-  const cur=st.dirs?.[myMark]||"left";if(snakeOpposite(cur,d))return;
-  if(botMode){if(snakeLiveState)snakeLiveState.dirs.A=d;return}
+  // Accept every arrow immediately. This fixes the Right button feeling "dead"
+  // when the snake is currently moving left.
+  if(botMode){
+    if(snakeLiveState)snakeLiveState.dirs.A=d;
+    return;
+  }
   await update(roomRef(`state/dirs/${myMark}`),d).catch(()=>{});
 }
 
